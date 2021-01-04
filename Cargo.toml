@@ -1,0 +1,32 @@
+[package]
+name = "cosigning_server"
+version = "0.1.0"
+authors = ["JSwambo <jake.t.swambo@hotmail.co.uk>"]
+edition = "2018"
+
+[dependencies]
+dirs = "3.0.1"
+daemonize-simple = "0.1.4"
+
+# TOML for the config
+toml = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging
+log = "0.4"
+fern = "0.5"
+chrono = "0.4"
+
+# FIXME: Move to postgresql
+rusqlite = { version = "0.24.1", features = ["bundled"] }
+
+# Revault
+revault_net = {git = "https://github.com/re-vault/revault_net"}
+revault_tx = {git = "https://github.com/re-vault/revault_tx", features = ["use-serde"]}
+
+[dev-dependencies]
+serial_test = "0.5.1"
+snow = {version = "0.7.2", features = ["libsodium-resolver"]}
+serde_json = "1.0.58"
+bitcoin = {version = "0.25.2", features = ["rand"]}

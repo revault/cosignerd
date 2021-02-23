@@ -2,17 +2,9 @@ use crate::{
     cosignerd::CosignerD,
     database::{interface::*, schema::SCHEMA, DatabaseError, DB_VERSION},
 };
-use revault_tx::miniscript::bitcoin::{OutPoint, Txid};
+use revault_tx::miniscript::bitcoin::OutPoint;
 use rusqlite::params;
 use std::{fs, path::PathBuf};
-
-// Sqlite supports up to i64, thus rusqlite prevents us from inserting u64's.
-// We use this to panic rather than inserting a truncated integer into the database (as we'd have
-// done by using `n as u32`).
-// fn timestamp_to_u32(n: u64) -> u32 {
-//     n.try_into()
-//         .expect("Is this the year 2106 yet? Misconfigured system clock.")
-// }
 
 // Create the db file with RW permissions only for the user
 fn create_db_file(db_path: &PathBuf) -> Result<(), std::io::Error> {
@@ -128,11 +120,10 @@ mod test {
     #[test]
     #[serial]
     fn test_db_creation() {
-        let test_framework = CosignerTestBuilder::new(3).initialize().configure();
+        let test_framework = CosignerTestBuilder::new(3, 4).initialize().configure();
         let config =
-            Config::from_file(Some(PathBuf::from("conf.toml"))).expect("Constructing Config");
+            Config::from_file(Some(test_framework.get_config_path())).expect("Constructing Config");
         let mut cosignerd = CosignerD::from_config(config).expect("Constructing cosignerd state");
-        println!("cosignerd.data_dir {:?}", cosignerd.data_dir);
 
         create_db(&mut cosignerd).unwrap();
 
@@ -141,9 +132,9 @@ mod test {
         // The version is right
         check_db(&mut cosignerd).unwrap();
         // But it would not open a database created for a different network
-        cosignerd.network = Network::Testnet;
-        check_db(&mut cosignerd).unwrap_err();
         cosignerd.network = Network::Bitcoin;
+        check_db(&mut cosignerd).unwrap_err();
+        cosignerd.network = Network::Testnet;
         // Neither would it accept to open a database from the future!
         db_exec(&cosignerd.db_file(), |tx| {
             tx.execute(
@@ -162,15 +153,14 @@ mod test {
     #[test]
     #[serial]
     fn test_db_signed_outpoints() {
-        let test_framework = CosignerTestBuilder::new(3).initialize().configure();
+        let test_framework = CosignerTestBuilder::new(3, 4).initialize().configure();
         let config =
-            Config::from_file(Some(PathBuf::from("conf.toml"))).expect("Constructing Config");
+            Config::from_file(Some(test_framework.get_config_path())).expect("Constructing Config");
         let mut cosignerd = CosignerD::from_config(config).expect("Constructing cosignerd state");
-
         create_db(&mut cosignerd).unwrap();
 
         let db_path = cosignerd.db_file();
-        let spend_tx = test_framework.generate_spend_tx(4, 5);
+        let spend_tx = test_framework.generate_spend_tx(5, 1);
         let outpoint = spend_tx.inner_tx().global.unsigned_tx.input[0].previous_output;
 
         db_insert_signed_outpoint(&db_path, outpoint).expect("Error inserting signed outpoint");

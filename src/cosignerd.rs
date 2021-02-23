@@ -2,7 +2,7 @@ use crate::{
     config::{config_folder_path, Config, ConfigError, Manager},
     utils::keys::{read_bitcoin_keys_file, read_noise_keys_file},
 };
-use revault_net::noise::NoisePrivKey;
+use revault_net::noise::SecretKey;
 use revault_tx::bitcoin::{
     util::bip32::{ExtendedPrivKey, ExtendedPubKey},
     Network,
@@ -17,7 +17,7 @@ use std::{
 pub struct CosignerKeys {
     xpub: Option<ExtendedPubKey>,
     xpriv: Option<ExtendedPrivKey>,
-    noise_priv: Option<NoisePrivKey>,
+    noise_priv: Option<SecretKey>,
 }
 
 impl CosignerKeys {
@@ -50,8 +50,6 @@ pub struct CosignerD {
     pub cosigner_keys: CosignerKeys,
     /// The managers' xpubs
     pub managers: Vec<Manager>,
-    /// TODO: db path
-
     /// ip::port (FIXME: default? always same?)
     pub addr: SocketAddr,
     // We store all our data in one place, that's here.
@@ -60,7 +58,7 @@ pub struct CosignerD {
     pub network: Network,
 }
 
-fn create_datadir(datadir_path: &PathBuf) -> Result<(), std::io::Error> {
+pub fn create_datadir(datadir_path: &PathBuf) -> Result<(), std::io::Error> {
     #[cfg(unix)]
     return {
         use std::fs::DirBuilder;
@@ -97,7 +95,7 @@ impl CosignerD {
         }
         data_dir = fs::canonicalize(data_dir)?;
 
-        let mut cosigner_keys = CosignerKeys::new();
+        let cosigner_keys = CosignerKeys::new();
 
         let network = config.network;
 
@@ -109,14 +107,12 @@ impl CosignerD {
             network,
         };
 
-        // FIXME: use bitcoin_keys_file() and noise_keys_file() but fix paths for
-        // consistency with test_builder
         cosignerd
             .cosigner_keys
-            .set_bitcoin_keys(PathBuf::from("cosigner_bitcoin.keys"));
+            .set_bitcoin_keys(cosignerd.bitcoin_keys_file());
         cosignerd
             .cosigner_keys
-            .set_noise_key(PathBuf::from("cosigner_noise.keys"));
+            .set_noise_key(cosignerd.noise_keys_file());
         Ok(cosignerd)
     }
 
@@ -155,15 +151,13 @@ mod tests {
     use super::*;
     use crate::{config::Config, utils::test_builder::CosignerTestBuilder};
     use serial_test::serial;
-    use std::path::PathBuf;
 
     #[test]
     #[serial]
     fn test_cosignerd_from_config() {
-        let test_framework = CosignerTestBuilder::new(3).initialize().configure();
+        let test_framework = CosignerTestBuilder::new(3, 4).initialize().configure();
         let config =
-            Config::from_file(Some(PathBuf::from("conf.toml"))).expect("Constructing Config");
-        // Construct CosignerD (global state)
-        let mut cosignerd = CosignerD::from_config(config).expect("Constructing cosignerd state");
+            Config::from_file(Some(test_framework.get_config_path())).expect("Constructing Config");
+        let _cosignerd = CosignerD::from_config(config).expect("Constructing cosignerd state");
     }
 }

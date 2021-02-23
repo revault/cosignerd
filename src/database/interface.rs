@@ -10,12 +10,6 @@ use std::{
 
 use rusqlite::{params, types::FromSqlError, Connection, Row, ToSql, Transaction, NO_PARAMS};
 
-// Note that we don't share a global struct that would contain the connection here.
-// As the bundled sqlite is compiled with SQLITE_THREADSAFE, quoting sqlite.org:
-// > Multi-thread. In this mode, SQLite can be safely used by multiple threads provided that
-// > no single database connection is used simultaneously in two or more threads.
-// Therefore the below routines create a new connection and can be used from any thread.
-
 /// Perform a set of modifications to the database inside a single transaction
 pub fn db_exec<F>(path: &PathBuf, modifications: F) -> Result<(), DatabaseError>
 where
@@ -135,15 +129,15 @@ mod tests {
 
     #[test]
     #[serial]
-    fn name() {
-        let test_framework = CosignerTestBuilder::new(3).initialize().configure();
+    fn test_db_interface() {
+        let test_framework = CosignerTestBuilder::new(3, 4).initialize().configure();
         let config =
-            Config::from_file(Some(PathBuf::from("conf.toml"))).expect("Constructing Config");
+            Config::from_file(Some(test_framework.get_config_path())).expect("Constructing Config");
         let mut cosignerd = CosignerD::from_config(config).expect("Constructing cosignerd state");
         create_db(&mut cosignerd).unwrap();
 
         let db_path = cosignerd.db_file();
-        let spend_tx = test_framework.generate_spend_tx(4, 5);
+        let spend_tx = test_framework.generate_spend_tx(5, 2);
         let outpoint = spend_tx.inner_tx().global.unsigned_tx.input[0].previous_output;
 
         db_insert_signed_outpoint(&db_path, outpoint.clone())

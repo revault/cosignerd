@@ -1,23 +1,20 @@
 //! This file contains functions needed to deserialize the configuration
 //! file. The configuration file contains the static public keys for communication
-//! with wallet clients (to set-up noise_KX channels) and bitcoin extended public
-//! keys for each manager (for signature verification of Spend Transactions).
+//! with wallet clients (to set-up noise_KK channels) and bitcoin DescriptorPublicKeys
+//! for each manager (for signature verification of Spend Transactions).
 
-// TODO: Include parameters for Tor hidden service, and ip::port to listen for
-// incoming messages on.
-
-use revault_net::noise::{NoisePrivKey, NoisePubKey, KEY_SIZE};
+use revault_net::noise::{PublicKey, KEY_SIZE};
 use revault_tx::{bitcoin::Network, miniscript::descriptor::DescriptorPublicKey};
 use serde::{de, Deserialize, Deserializer};
 use std::{collections::HashMap, path::PathBuf, str::FromStr, vec::Vec};
 
 /// A manager type that the cosigner will communicate with
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Manager {
     /// Bitcoin wallet public key
     pub xpub: DescriptorPublicKey,
     // Static noise public key
-    pub noise_pubkey: NoisePubKey,
+    pub noise_pubkey: PublicKey,
 }
 
 impl<'de> Deserialize<'de> for Manager {
@@ -46,9 +43,59 @@ impl<'de> Deserialize<'de> for Manager {
                 .ok_or_else(|| de::Error::custom(r#"No "noise_pubkey" for manager entry."#))?,
         )
         .map_err(|e| de::Error::custom(format!("Invalid \"noise_pubkey\" entry: {:?}", e)))?;
-        let noise_pubkey = NoisePubKey(noise_pubkey_array);
+        let noise_pubkey = PublicKey(noise_pubkey_array);
 
         Ok(Manager { xpub, noise_pubkey })
+    }
+}
+
+/// A participant not taking part in day-to-day fund management, and who runs
+/// a cosigning server to ensure that spending transactions are only signed once.
+#[derive(Debug, Clone)]
+pub struct Stakeholder {
+    /// The master extended public key of this participant
+    pub xpub: DescriptorPublicKey,
+    /// The cosigning server's static public key
+    pub cosigner_key: DescriptorPublicKey,
+}
+
+impl<'de> Deserialize<'de> for Stakeholder {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let map = HashMap::<String, String>::deserialize(deserializer)?;
+
+        let (xpub_str, cosigner_key_str) = (map.get("xpub"), map.get("cosigner_key"));
+        if xpub_str == None || cosigner_key_str == None {
+            return Err(de::Error::custom(
+                r#"Stakeholder entries need both a "xpub" and a "cosigner_key""#,
+            ));
+        }
+
+        let mut xpub =
+            DescriptorPublicKey::from_str(&xpub_str.unwrap()).map_err(de::Error::custom)?;
+        // Check the xpub is an actual xpub
+        xpub = if let DescriptorPublicKey::XPub(mut xpub) = xpub {
+            // We always derive from it, but from_str is a bit strict..
+            xpub.is_wildcard = true;
+            DescriptorPublicKey::XPub(xpub)
+        } else {
+            return Err(de::Error::custom("Need an xpub, not a raw public key."));
+        };
+
+        let mut cosigner_key =
+            DescriptorPublicKey::from_str(&cosigner_key_str.unwrap()).map_err(de::Error::custom)?;
+        // Check the static key is an actual static key
+        cosigner_key = if let DescriptorPublicKey::XPub(mut cosigner_key) = cosigner_key {
+            // We always derive from it, but from_str is a bit strict..
+            cosigner_key.is_wildcard = true;
+            DescriptorPublicKey::XPub(cosigner_key)
+        } else {
+            return Err(de::Error::custom("Need an xpub, not a raw public key."));
+        };
+
+        Ok(Stakeholder { xpub, cosigner_key })
     }
 }
 
@@ -57,6 +104,8 @@ impl<'de> Deserialize<'de> for Manager {
 pub struct Config {
     /// The managers' xpubs
     pub managers: Vec<Manager>,
+    /// The stakeholders' xpubs and their cosigners' public keys
+    pub stakeholders: Vec<Stakeholder>,
     /// Bitcoin network
     pub network: Network,
     /// An optional custom data directory
@@ -153,6 +202,13 @@ mod tests {
             [[managers]]
             xpub = "xpub6BHATNyFVsBD8MRygTsv2q9WFTJzEB3o6CgJK7sjopcB286bmWFkNYm6kK5fzVe2gk4mJrSK5isFSFommNDST3RYJWSzrAe9V4bEzboHqnA"
             noise_pubkey = "[137, 236, 117, 33, 86, 176, 65, 253, 92, 172, 20, 249, 131, 155, 77, 60, 61, 194, 181, 65, 226, 99, 223, 207, 255, 71, 40, 219, 139, 152, 164, 120]"
+            [[stakeholders]]
+            xpub = "xpub661MyMwAqRbcEfj3aPs1HJtoyXfVqnqzrDCahd6Uvv7qMYc8AyG33UMNzGybwTBwKH5VZJMHaP4AWebzBtPbjvTPVEJjp2rEtaHZn6cgspv"
+            cosigner_key = "xpub661MyMwAqRbcH5kBNDecJveq48q72p8ki8BaqhArhWcprScGNauLUhc3Ed2BqtXjJa8aGMMW3LstC5uRNY1QoKsyNLvH45u5KwihgWUJHkX"
+            [[stakeholders]]
+            xpub = "xpub661MyMwAqRbcEaNLwKNmwFBcTyjVrjvv2Ce63kHaXFDtGXwyzzQEQQy4X3nAGTtCVYPpU9mntFmvowhfF1fAwqjRXamfdX4U2V8RGVrY6oD"
+            cosigner_key = "xpub661MyMwAqRbcGeZKFNGhUb8XdhVTG8W8k12VBGV8cYPoveyt99eX5uZHdQ2pyw6YGu7JWc2v2auAMrRsW29S9PJBYsaadsC1o82iLRZduQp"
+
         "#;
         let _config: Config = toml::from_str(toml_str).expect("Deserializing toml_str");
         println!("_config.data_dir: {:?}", _config.data_dir);

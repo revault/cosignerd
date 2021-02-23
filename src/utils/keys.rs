@@ -1,7 +1,4 @@
-use revault_net::{
-    error::Error as NetError,
-    noise::{NoisePrivKey, NoisePubKey},
-};
+use revault_net::noise::{PublicKey, SecretKey};
 use revault_tx::bitcoin::{
     secp256k1,
     secp256k1::rand::{rngs::StdRng, FromEntropy, RngCore},
@@ -15,14 +12,14 @@ use std::{
     path::PathBuf,
 };
 
-pub fn read_noise_keys_file(path: PathBuf) -> Result<(NoisePrivKey, NoisePubKey), Error> {
+pub fn read_noise_keys_file(path: PathBuf) -> Result<(SecretKey, PublicKey), Error> {
     let mut noise_keys_file = File::open(path)?;
     let mut priv_buf = [0u8; 32];
     let mut pub_buf = [0u8; 32];
     noise_keys_file.read_exact(&mut priv_buf)?;
     noise_keys_file.read_exact(&mut pub_buf)?;
-    let privkey = NoisePrivKey(priv_buf);
-    let pubkey = NoisePubKey(pub_buf);
+    let privkey = SecretKey(priv_buf);
+    let pubkey = PublicKey(pub_buf);
     Ok((privkey, pubkey))
 }
 
@@ -48,39 +45,15 @@ pub fn read_bitcoin_keys_file(path: PathBuf) -> Result<(ExtendedPrivKey, Extende
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use snow::{params::NoiseParams, resolvers::SodiumResolver, Builder, Keypair};
+    use revault_net::sodiumoxide::crypto::box_::curve25519xsalsa20poly1305::gen_keypair;
     use std::fs::remove_file;
-
-    fn get_noise_params() -> Result<NoiseParams, NetError> {
-        let noise_params: NoiseParams = "Noise_KX_25519_ChaChaPoly_SHA256"
-            .parse()
-            .map_err(|e| NetError::Noise(format!("Invalid Noise Pattern: {}", e)))?;
-        Ok(noise_params)
-    }
-
-    /// Revault must specify the SodiumResolver to use sodiumoxide as the cryptography provider
-    /// when generating a static key pair for secure communication.
-    fn generate_keypair(noise_params: NoiseParams) -> Keypair {
-        Builder::with_resolver(noise_params, Box::new(SodiumResolver::default()))
-            .generate_keypair()
-            .unwrap()
-    }
-
-    fn generate_noise_keys() -> Result<(NoisePrivKey, NoisePubKey), Error> {
-        let noise_params = get_noise_params().unwrap();
-        let keypair = generate_keypair(noise_params);
-        Ok((
-            NoisePrivKey(keypair.private[..].try_into().unwrap()),
-            NoisePubKey(keypair.public[..].try_into().unwrap()),
-        ))
-    }
 
     pub fn create_noise_keys_file(path: PathBuf) -> Result<(), Error> {
         let mut noise_keys_file = File::create(path)?;
-        let noise_keys = generate_noise_keys()?;
+        let (noise_pubkey, noise_privkey) = gen_keypair();
         let mut buf = [0u8; 64];
-        buf[..32].copy_from_slice(&(noise_keys.0).0);
-        buf[32..].copy_from_slice(&(noise_keys.1).0);
+        buf[..32].copy_from_slice(&noise_privkey.0);
+        buf[32..].copy_from_slice(&noise_pubkey.0);
         noise_keys_file.write_all(&buf)?;
         Ok(())
     }

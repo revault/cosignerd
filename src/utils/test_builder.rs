@@ -1,5 +1,6 @@
 use crate::{
-    config::Config,
+    config::{config_folder_path, Config},
+    cosignerd::create_datadir,
     utils::keys::{
         read_bitcoin_keys_file, read_noise_keys_file,
         tests::{create_bitcoin_seed_file, create_noise_keys_file, generate_bitcoin_seed},
@@ -9,18 +10,18 @@ use revault_tx::{
     miniscript::{
         bitcoin::{
             self, secp256k1,
-            util::bip32::{ExtendedPrivKey, ExtendedPubKey},
-            Network, OutPoint, PublicKey, Transaction, TxIn, TxOut,
+            util::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey},
+            Network, OutPoint, Transaction, TxIn, TxOut,
         },
-        NullCtx,
+        DescriptorPublicKey, DescriptorPublicKeyCtx, NullCtx,
     },
-    scripts::{self, cpfp_descriptor, unvault_descriptor, vault_descriptor},
+    scripts::{cpfp_descriptor, unvault_descriptor, vault_descriptor, UnvaultDescriptor},
     transactions::{SpendTransaction, UnvaultTransaction, VaultTransaction},
     txins::VaultTxIn,
-    txouts::{ExternalTxOut, SpendTxOut, UnvaultTxOut, VaultTxOut},
+    txouts::{ExternalTxOut, SpendTxOut, VaultTxOut},
 };
 use std::{
-    fs::{remove_file, File},
+    fs::{self, remove_file, File},
     io::Write,
     path::PathBuf,
     str::FromStr,
@@ -33,48 +34,78 @@ enum TestState {
     Configured,
 }
 
-/// A CosignerTestBuilder type to simplify setup and teardown needed for tests.
-// setup :
-//      *done* generate bitcoin.keys and noise.keys files
-//      *done* generate set of managers bitcoin.keys and noise.keys files
-//      *done* generate config file which includes set of managers' noise pubkeys
-//      Construct client channel and enact handshake as one of managers
-//      *done* generate a new valid spend_tx (with inputs locked to a valid script
-//             including servers' bitcoin pubkey)
-//      Send SpendTx message to server from client
-//      Receive server's response to SpendTx
-// teardown :
-//      remove cosigner's bitcoin.keys and noise.keys files
-//      remove set of managers bitcoin.keys and noise.keys files
-//      remove config file
-//      remove db file
 #[derive(Debug)]
 pub struct CosignerTestBuilder {
     state: TestState,
-    nman: u8,
+    n_man: u8,
+    n_stk: u8,
+    config_path: PathBuf,
 }
 
 impl CosignerTestBuilder {
-    pub fn new(nman: u8) -> Self {
+    pub fn new(n_man: u8, n_stk: u8) -> Self {
+        let config_path = config_folder_path()
+            .map(|mut path| {
+                path.push("conf.toml");
+                path
+            })
+            .expect("Constructing config path");
+
         CosignerTestBuilder {
             state: TestState::Uninitialized,
-            nman: nman,
+            n_man: n_man,
+            n_stk: n_stk,
+            config_path: config_path,
         }
     }
 
+    fn data_dir(&self) -> PathBuf {
+        let network = bitcoin::Network::Testnet;
+        let mut data_dir = config_folder_path().expect("Creating data_dir");
+
+        data_dir.push(network.to_string());
+        if !data_dir.as_path().exists() {
+            create_datadir(&data_dir).expect("CosignerTestBuilder failed to create data_dir");
+        }
+        data_dir = fs::canonicalize(data_dir).expect("Canonicalize data_dir");
+        data_dir
+    }
+
     fn initialize_cosigner(&self) {
-        create_bitcoin_seed_file(PathBuf::from("cosigner_bitcoin.keys"))
-            .expect("Creating cosigner bitcoin keys file");
-        create_noise_keys_file(PathBuf::from("cosigner_noise.keys"))
-            .expect("Creating cosigner noise keys file");
+        create_bitcoin_seed_file(
+            [self.data_dir(), PathBuf::from("cosigner_bitcoin.keys")]
+                .iter()
+                .collect(),
+        )
+        .expect("Creating cosigner bitcoin keys file");
+        create_noise_keys_file(
+            [self.data_dir(), PathBuf::from("cosigner_noise.keys")]
+                .iter()
+                .collect(),
+        )
+        .expect("Creating cosigner noise keys file");
     }
 
     fn initialize_managers(&self) {
-        for manager in 1..=self.nman {
-            create_bitcoin_seed_file(PathBuf::from(format!("manager_{:?}_bitcoin.keys", manager)))
-                .expect(&(format!("Creating bitcoin keys file for manager {:?}", manager)));
-            create_noise_keys_file(PathBuf::from(format!("manager_{:?}_noise.keys", manager)))
-                .expect(&(format!("Creating noise keys file for manager {:?}", manager)));
+        for manager in 1..=self.n_man {
+            create_bitcoin_seed_file(
+                [
+                    self.data_dir(),
+                    PathBuf::from(format!("manager_{:?}_bitcoin.keys", manager)),
+                ]
+                .iter()
+                .collect(),
+            )
+            .expect(&(format!("Creating bitcoin keys file for manager {:?}", manager)));
+            create_noise_keys_file(
+                [
+                    self.data_dir(),
+                    PathBuf::from(format!("manager_{:?}_noise.keys", manager)),
+                ]
+                .iter()
+                .collect(),
+            )
+            .expect(&(format!("Creating noise keys file for manager {:?}", manager)));
         }
     }
 
@@ -91,23 +122,39 @@ impl CosignerTestBuilder {
         }
         // write toml config file
         let mut toml_str = String::new();
-        toml_str.push_str("network = \"bitcoin\"\n");
+        toml_str.push_str("network = \"testnet\"\n");
 
-        let xpub = read_bitcoin_keys_file(PathBuf::from("cosigner_bitcoin.keys"))
-            .expect("Reading cosigner bitcoin keys file")
-            .1;
+        // This cosigner and managers keys are already initialized since
+        // (public, private) bitcoin and noise keypairs are required for them.
+        let xpub = read_bitcoin_keys_file(
+            [self.data_dir(), PathBuf::from("cosigner_bitcoin.keys")]
+                .iter()
+                .collect(),
+        )
+        .expect("Reading cosigner bitcoin keys file")
+        .1;
         toml_str.push_str(&(format!("[cosigner_keys]\nxpub = {:?}\n", xpub.to_string())));
-        for manager in 1..self.nman {
-            let man_xpub = read_bitcoin_keys_file(PathBuf::from(format!(
-                "manager_{:?}_bitcoin.keys",
-                manager
-            )))
+        for manager in 1..self.n_man {
+            let man_xpub = read_bitcoin_keys_file(
+                [
+                    self.data_dir(),
+                    PathBuf::from(format!("manager_{:?}_bitcoin.keys", manager)),
+                ]
+                .iter()
+                .collect(),
+            )
             .expect(&(format!("Reading manager_{:?}_bitcoin.keys", manager)))
             .1;
-            let man_noise_pub =
-                read_noise_keys_file(PathBuf::from(format!("manager_{:?}_noise.keys", manager)))
-                    .expect(&(format!("Reading manager_{:?}_noise.keys", manager)))
-                    .1;
+            let man_noise_pub = read_noise_keys_file(
+                [
+                    self.data_dir(),
+                    PathBuf::from(format!("manager_{:?}_noise.keys", manager)),
+                ]
+                .iter()
+                .collect(),
+            )
+            .expect(&(format!("Reading manager_{:?}_noise.keys", manager)))
+            .1;
             toml_str.push_str(
                 &(format!(
                     "[[managers]]\nxpub = {:?}\nnoise_pubkey = \"{:?}\"\n",
@@ -116,16 +163,76 @@ impl CosignerTestBuilder {
                 )),
             );
         }
-        let mut conf = File::create("conf.toml").expect("Creating config file");
+
+        // For stakeholders and the remaining cosigners, only bitcoin pubkeys are
+        // needed so we generate them here and add them to the test framework
+        // config.toml file
+        let secp = secp256k1::Secp256k1::new();
+        // FIXME: For some reason this inclusive range end is needed?
+        let keys: Vec<ExtendedPubKey> = (1..=(2 * self.n_stk))
+            .map(|_| generate_bitcoin_seed().expect("generating a bitcoin seed"))
+            .map(|seed| {
+                ExtendedPrivKey::new_master(Network::Bitcoin, &seed)
+                    .expect("converting seed to ExtendedPrivKey")
+            })
+            .map(|xpriv| ExtendedPubKey::from_private(&secp, &xpriv))
+            .collect();
+
+        let mut cosigners = keys[(self.n_stk + 1) as usize..(2 * self.n_stk as usize)].to_vec();
+        cosigners.push(xpub);
+        let stakeholders = keys[1..=self.n_stk as usize].to_vec();
+
+        for (stk_pub, cos_pub) in stakeholders.iter().zip(cosigners.iter()) {
+            toml_str.push_str(
+                &(format!(
+                    "[[stakeholders]]\nxpub = {:?}\ncosigner_key = {:?}\n",
+                    stk_pub.to_string(),
+                    cos_pub.to_string()
+                )),
+            );
+        }
+
+        let mut conf = File::create(&self.config_path).expect("Creating config file");
         write!(conf, "{}", &toml_str).expect("Writing to config file");
         self.state = TestState::Configured;
         self
     }
 
+    pub fn get_config_path(&self) -> PathBuf {
+        PathBuf::from(&self.config_path)
+    }
+
+    pub fn get_unvault_descriptor(
+        &self,
+        csv: u32,
+        thresh: usize,
+    ) -> UnvaultDescriptor<DescriptorPublicKey> {
+        let config = Config::from_file(Some(self.get_config_path())).expect("Constructing Config");
+        let mut stakeholders: Vec<DescriptorPublicKey> = Vec::new();
+        let mut cosigners: Vec<DescriptorPublicKey> = Vec::new();
+        for stk in config.stakeholders {
+            stakeholders.push(stk.xpub);
+            cosigners.push(stk.cosigner_key);
+        }
+        let mut managers: Vec<DescriptorPublicKey> = Vec::new();
+        for man in config.managers {
+            managers.push(man.xpub);
+        }
+
+        unvault_descriptor(
+            stakeholders.clone(),
+            managers.clone(),
+            thresh,
+            cosigners.clone(),
+            csv,
+        )
+        .expect("Unvault descriptor generation error")
+    }
+
     /// To test signing, database and transport and functionalities, we need
     /// spend transactions where the cosigning server is a valid participant
     /// and can add their signature.
-    pub fn generate_spend_tx(&self, n_stk: u8, csv: u32) -> SpendTransaction {
+    pub fn generate_spend_tx(&self, csv: u32, thresh: usize) -> SpendTransaction {
         if self.state != TestState::Configured {
             panic!("Cannot generate spend transaction if TestBuilder hasn't been Configured");
         }
@@ -133,42 +240,23 @@ impl CosignerTestBuilder {
         // First define the set of participants using vectors of public keys.
         // Generate enough keys for the stakeholders and other cosigners.
         // This cosigner and other managers' keys are already initialized.
-        let secp = secp256k1::Secp256k1::new();
-        let keys: Vec<PublicKey> = (1..=(2 * n_stk))
-            .map(|_| generate_bitcoin_seed().expect("generating a bitcoin seed"))
-            .map(|seed| {
-                ExtendedPrivKey::new_master(Network::Bitcoin, &seed)
-                    .expect("converting seed to ExtendedPrivKey")
-            })
-            .map(|xpriv| ExtendedPubKey::from_private(&secp, &xpriv).public_key)
-            .collect();
-
-        let mut managers = Vec::new();
-        for manager in 1..=self.nman {
-            managers.push(
-                read_bitcoin_keys_file(PathBuf::from(format!(
-                    "manager_{:?}_bitcoin.keys",
-                    manager
-                )))
-                .unwrap()
-                .1
-                .public_key,
-            );
+        let config = Config::from_file(Some(self.get_config_path())).expect("Constructing Config");
+        let mut stakeholders: Vec<DescriptorPublicKey> = Vec::new();
+        let mut cosigners: Vec<DescriptorPublicKey> = Vec::new();
+        for stk in config.stakeholders {
+            stakeholders.push(stk.xpub);
+            cosigners.push(stk.cosigner_key);
         }
-
-        let my_pubkey = read_bitcoin_keys_file(PathBuf::from("cosigner_bitcoin.keys"))
-            .unwrap()
-            .1
-            .public_key;
-        let mut cosigners = keys[n_stk as usize + 1..].to_vec();
-        cosigners.push(my_pubkey);
-        let stakeholders = keys[1..=n_stk as usize].to_vec();
+        let mut managers: Vec<DescriptorPublicKey> = Vec::new();
+        for man in config.managers {
+            managers.push(man.xpub);
+        }
 
         // Now create the script descriptors
         let unvault_descriptor = unvault_descriptor(
             stakeholders.clone(),
             managers.clone(),
-            2,
+            thresh,
             cosigners.clone(),
             csv,
         )
@@ -179,7 +267,8 @@ impl CosignerTestBuilder {
             vault_descriptor(stakeholders).expect("Vault descriptor generation error");
 
         // Proceed to creating transactions. First, the vault (deposit) transaction.
-        let xpub_ctx = NullCtx;
+        let secp = secp256k1::Secp256k1::new();
+        let xpub_ctx = DescriptorPublicKeyCtx::new(&secp, ChildNumber::from(0));
         let deposit_value: u64 = 100000000;
 
         let vault_scriptpubkey = vault_descriptor.0.script_pubkey(xpub_ctx);
@@ -241,19 +330,42 @@ impl CosignerTestBuilder {
 impl Drop for CosignerTestBuilder {
     fn drop(&mut self) {
         if self.state != TestState::Uninitialized {
-            remove_file("cosigner_bitcoin.keys").expect("Removing cosigner_bitcoin.keys");
-            remove_file("cosigner_noise.keys").expect("Removing cosigner_noise.keys");
-            for manager in 1..=self.nman {
-                remove_file(format!("manager_{:?}_bitcoin.keys", manager))
-                    .expect(&(format!("Removing bitcoin keys file for manager {:?}", manager)));
-                remove_file(format!("manager_{:?}_noise.keys", manager))
-                    .expect(&(format!("Removing noise keys file for manager {:?}", manager)));
+            remove_file(
+                [self.data_dir(), PathBuf::from("cosigner_bitcoin.keys")]
+                    .iter()
+                    .collect::<PathBuf>(),
+            )
+            .expect("Removing cosigner_bitcoin.keys");
+            remove_file(
+                [self.data_dir(), PathBuf::from("cosigner_noise.keys")]
+                    .iter()
+                    .collect::<PathBuf>(),
+            )
+            .expect("Removing cosigner_noise.keys");
+            for manager in 1..=self.n_man {
+                remove_file(
+                    [
+                        self.data_dir(),
+                        PathBuf::from(format!("manager_{:?}_bitcoin.keys", manager)),
+                    ]
+                    .iter()
+                    .collect::<PathBuf>(),
+                )
+                .expect(&(format!("Removing bitcoin keys file for manager {:?}", manager)));
+                remove_file(
+                    [
+                        self.data_dir(),
+                        PathBuf::from(format!("manager_{:?}_noise.keys", manager)),
+                    ]
+                    .iter()
+                    .collect::<PathBuf>(),
+                )
+                .expect(&(format!("Removing noise keys file for manager {:?}", manager)));
             }
         }
         if self.state == TestState::Configured {
-            remove_file("conf.toml").expect("Removing conf.toml");
+            remove_file(&self.config_path).expect("Removing conf.toml");
         }
-        // TODO: remove db
     }
 }
 
@@ -265,7 +377,8 @@ mod tests {
     #[test]
     #[serial]
     fn test_builder() {
-        let test_framework = CosignerTestBuilder::new(4).initialize().configure();
-        test_framework.generate_spend_tx(4, 5);
+        let test_framework = CosignerTestBuilder::new(4, 5).initialize().configure();
+        test_framework.generate_spend_tx(10, 2);
+        test_framework.get_unvault_descriptor(10, 2);
     }
 }

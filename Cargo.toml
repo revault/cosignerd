@@ -1,12 +1,12 @@
 [package]
 name = "cosigning_server"
-version = "0.1.0"
-authors = ["JSwambo <jake.t.swambo@hotmail.co.uk>"]
+version = "0.0.1"
+authors = ["JSwambo <jake.t.swambo@hotmail.co.uk>", "Antoine Poinsot <darosior@protonmail.com>"]
 edition = "2018"
 
 [dependencies]
-dirs = "3.0.1"
-daemonize-simple = "0.1.4"
+dirs = "3.0"
+daemonize-simple = "0.1"
 
 # TOML for the config
 toml = "0.5"
@@ -18,12 +18,11 @@ log = "0.4"
 fern = "0.5"
 chrono = "0.4"
 
-# FIXME: Move to postgresql
-rusqlite = { version = "0.24.1", features = ["bundled"] }
+rusqlite = { version = "0.24.2", features = ["bundled"] }
 
 # Revault
-revault_net = {git = "https://github.com/re-vault/revault_net"}
-revault_tx = {git = "https://github.com/re-vault/revault_tx", features = ["use-serde"]}
+revault_net = { git = "https://github.com/revault/revault_net" }
+revault_tx = { version = "0.1", features = ["use-serde"] }
 
 [dev-dependencies]
 serial_test = "0.5.1"

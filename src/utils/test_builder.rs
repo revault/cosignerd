@@ -15,10 +15,10 @@ use revault_tx::{
         },
         DescriptorPublicKey, DescriptorPublicKeyCtx, NullCtx,
     },
-    scripts::{cpfp_descriptor, unvault_descriptor, vault_descriptor, UnvaultDescriptor},
-    transactions::{SpendTransaction, UnvaultTransaction, VaultTransaction},
-    txins::VaultTxIn,
-    txouts::{ExternalTxOut, SpendTxOut, VaultTxOut},
+    scripts::{cpfp_descriptor, deposit_descriptor, unvault_descriptor, UnvaultDescriptor},
+    transactions::{DepositTransaction, SpendTransaction, UnvaultTransaction},
+    txins::DepositTxIn,
+    txouts::{DepositTxOut, ExternalTxOut, SpendTxOut},
 };
 use std::{
     fs::{self, remove_file, File},
@@ -263,15 +263,15 @@ impl CosignerTestBuilder {
         .expect("Unvault descriptor generation error");
         let cpfp_descriptor =
             cpfp_descriptor(managers).expect("Unvault CPFP descriptor generation error");
-        let vault_descriptor =
-            vault_descriptor(stakeholders).expect("Vault descriptor generation error");
+        let deposit_descriptor =
+            deposit_descriptor(stakeholders).expect("Vault descriptor generation error");
 
         // Proceed to creating transactions. First, the vault (deposit) transaction.
         let secp = secp256k1::Secp256k1::new();
         let xpub_ctx = DescriptorPublicKeyCtx::new(&secp, ChildNumber::from(0));
         let deposit_value: u64 = 100000000;
 
-        let vault_scriptpubkey = vault_descriptor.0.script_pubkey(xpub_ctx);
+        let vault_scriptpubkey = unvault_descriptor.0.script_pubkey(xpub_ctx);
         let vault_raw_tx = Transaction {
             version: 2,
             lock_time: 0,
@@ -287,11 +287,12 @@ impl CosignerTestBuilder {
                 script_pubkey: vault_scriptpubkey.clone(),
             }],
         };
-        let vault_txo = VaultTxOut::new(vault_raw_tx.output[0].value, &vault_descriptor, xpub_ctx);
-        let vault_tx = VaultTransaction(vault_raw_tx);
+        let vault_txo =
+            DepositTxOut::new(vault_raw_tx.output[0].value, &deposit_descriptor, xpub_ctx);
+        let vault_tx = DepositTransaction(vault_raw_tx);
 
         // Now the unvault transaction.
-        let vault_txin = VaultTxIn::new(
+        let vault_txin = DepositTxIn::new(
             OutPoint {
                 txid: vault_tx.0.txid(),
                 vout: 0,
@@ -309,11 +310,9 @@ impl CosignerTestBuilder {
         .expect("Creating unvault transaction");
 
         // Now the spend transaction.
-        let unvault_txin = unvault_tx
-            .unvault_txin(&unvault_descriptor, xpub_ctx, csv)
-            .unwrap();
+        let unvault_txin = unvault_tx.spend_unvault_txin(&unvault_descriptor, xpub_ctx, csv);
         let spend_txo = ExternalTxOut::new(TxOut {
-            value: 1,
+            value: deposit_value - 50_000 - 50_000,
             ..TxOut::default()
         });
 
@@ -323,7 +322,9 @@ impl CosignerTestBuilder {
             &cpfp_descriptor,
             xpub_ctx,
             0,
+            true,
         )
+        .expect("Creating spend transaction")
     }
 }
 

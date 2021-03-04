@@ -3,8 +3,7 @@ use revault_tx::miniscript::bitcoin::OutPoint;
 pub const SCHEMA: &str = "\
 
 CREATE TABLE db_params (
-    version INTEGER NOT NULL,
-    network TEXT NOT NULL
+    version INTEGER NOT NULL
 );
 
 CREATE TABLE signed_outpoints (

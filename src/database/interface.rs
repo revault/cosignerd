@@ -130,13 +130,10 @@ mod tests {
     #[test]
     #[serial]
     fn test_db_interface() {
-        let test_framework = CosignerTestBuilder::new(3, 4).initialize().configure();
-        let config =
-            Config::from_file(Some(test_framework.get_config_path())).expect("Constructing Config");
-        let mut cosignerd = CosignerD::from_config(config).expect("Constructing cosignerd state");
-        create_db(&mut cosignerd).unwrap();
+        let mut test_framework = CosignerTestBuilder::new(3, 4);
+        create_db(&mut test_framework.cosignerd).unwrap();
 
-        let db_path = cosignerd.db_file();
+        let db_path = test_framework.cosignerd.db_file();
         let spend_tx = test_framework.generate_spend_tx(5, 2);
         let outpoint = spend_tx.inner_tx().global.unsigned_tx.input[0].previous_output;
 
@@ -146,6 +143,6 @@ mod tests {
         db_signed_outpoint(&db_path, &outpoint)
             .expect("Error while querying db for signed_outpoint");
 
-        clear_datadir(&cosignerd.data_dir);
+        clear_datadir(&test_framework.cosignerd.data_dir);
     }
 }

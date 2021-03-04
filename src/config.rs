@@ -3,113 +3,85 @@
 //! with wallet clients (to set-up noise_KK channels) and bitcoin DescriptorPublicKeys
 //! for each manager (for signature verification of Spend Transactions).
 
-use revault_net::noise::{PublicKey, KEY_SIZE};
-use revault_tx::{bitcoin::Network, miniscript::descriptor::DescriptorPublicKey};
+use revault_net::noise::PublicKey as NoisePubkey;
+use revault_tx::{
+    bitcoin::{hashes::hex::FromHex, util::bip32, PublicKey as BitcoinPubkey},
+    miniscript::descriptor::{DescriptorPublicKey, DescriptorSinglePub, DescriptorXKey},
+};
 use serde::{de, Deserialize, Deserializer};
-use std::{collections::HashMap, path::PathBuf, str::FromStr, vec::Vec};
+use std::{path::PathBuf, vec::Vec};
 
-/// A manager type that the cosigner will communicate with
-#[derive(Debug, Clone)]
-pub struct Manager {
-    /// Bitcoin wallet public key
+pub fn deserialize_noisepubkey<'de, D>(deserializer: D) -> Result<NoisePubkey, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let data = String::deserialize(deserializer)?;
+    FromHex::from_hex(&data)
+        .map_err(|e| de::Error::custom(e))
+        .map(NoisePubkey)
+}
+
+fn xpub_to_desc_xpub(xkey: bip32::ExtendedPubKey) -> DescriptorPublicKey {
+    DescriptorPublicKey::XPub(DescriptorXKey {
+        origin: None,
+        xkey,
+        derivation_path: bip32::DerivationPath::from(vec![]),
+        is_wildcard: true,
+    })
+}
+
+fn deserialize_xpub<'de, D>(deserializer: D) -> Result<DescriptorPublicKey, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let xpub = bip32::ExtendedPubKey::deserialize(deserializer)?;
+    Ok(xpub_to_desc_xpub(xpub))
+}
+
+fn deserialize_xpubs<'de, D>(deserializer: D) -> Result<Vec<DescriptorPublicKey>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let xpubs = Vec::<bip32::ExtendedPubKey>::deserialize(deserializer)?;
+    Ok(xpubs.into_iter().map(xpub_to_desc_xpub).collect())
+}
+
+fn deserialize_single_keys<'de, D>(deserializer: D) -> Result<Vec<DescriptorPublicKey>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let xpubs = Vec::<BitcoinPubkey>::deserialize(deserializer)?;
+    Ok(xpubs
+        .into_iter()
+        .map(|key| DescriptorPublicKey::SinglePub(DescriptorSinglePub { origin: None, key }))
+        .collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ManagerConfig {
+    #[serde(deserialize_with = "deserialize_xpub")]
     pub xpub: DescriptorPublicKey,
-    // Static noise public key
-    pub noise_pubkey: PublicKey,
+    #[serde(deserialize_with = "deserialize_noisepubkey")]
+    pub noise_key: NoisePubkey,
 }
 
-impl<'de> Deserialize<'de> for Manager {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let map = HashMap::<String, String>::deserialize(deserializer)?;
-
-        let xpub_str = map
-            .get("xpub")
-            .ok_or_else(|| de::Error::custom(r#"No "xpub" for manager entry."#))?;
-
-        let mut xpub = DescriptorPublicKey::from_str(&xpub_str).map_err(de::Error::custom)?;
-
-        xpub = if let DescriptorPublicKey::XPub(mut xpub) = xpub {
-            // We always derive from it, but from_str is a bit strict..
-            xpub.is_wildcard = true;
-            DescriptorPublicKey::XPub(xpub)
-        } else {
-            return Err(de::Error::custom("Need an xpub, not a raw public key."));
-        };
-
-        let noise_pubkey_array: [u8; KEY_SIZE] = serde_json::from_str(
-            map.get("noise_pubkey")
-                .ok_or_else(|| de::Error::custom(r#"No "noise_pubkey" for manager entry."#))?,
-        )
-        .map_err(|e| de::Error::custom(format!("Invalid \"noise_pubkey\" entry: {:?}", e)))?;
-        let noise_pubkey = PublicKey(noise_pubkey_array);
-
-        Ok(Manager { xpub, noise_pubkey })
-    }
-}
-
-/// A participant not taking part in day-to-day fund management, and who runs
-/// a cosigning server to ensure that spending transactions are only signed once.
-#[derive(Debug, Clone)]
-pub struct Stakeholder {
-    /// The master extended public key of this participant
-    pub xpub: DescriptorPublicKey,
-    /// The cosigning server's static public key
-    pub cosigner_key: DescriptorPublicKey,
-}
-
-impl<'de> Deserialize<'de> for Stakeholder {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let map = HashMap::<String, String>::deserialize(deserializer)?;
-
-        let (xpub_str, cosigner_key_str) = (map.get("xpub"), map.get("cosigner_key"));
-        if xpub_str == None || cosigner_key_str == None {
-            return Err(de::Error::custom(
-                r#"Stakeholder entries need both a "xpub" and a "cosigner_key""#,
-            ));
-        }
-
-        let mut xpub =
-            DescriptorPublicKey::from_str(&xpub_str.unwrap()).map_err(de::Error::custom)?;
-        // Check the xpub is an actual xpub
-        xpub = if let DescriptorPublicKey::XPub(mut xpub) = xpub {
-            // We always derive from it, but from_str is a bit strict..
-            xpub.is_wildcard = true;
-            DescriptorPublicKey::XPub(xpub)
-        } else {
-            return Err(de::Error::custom("Need an xpub, not a raw public key."));
-        };
-
-        let mut cosigner_key =
-            DescriptorPublicKey::from_str(&cosigner_key_str.unwrap()).map_err(de::Error::custom)?;
-        // Check the static key is an actual static key
-        cosigner_key = if let DescriptorPublicKey::XPub(mut cosigner_key) = cosigner_key {
-            // We always derive from it, but from_str is a bit strict..
-            cosigner_key.is_wildcard = true;
-            DescriptorPublicKey::XPub(cosigner_key)
-        } else {
-            return Err(de::Error::custom("Need an xpub, not a raw public key."));
-        };
-
-        Ok(Stakeholder { xpub, cosigner_key })
-    }
-}
-
-/// Static information required by cosigner to operate
+/// Static informations we require to operate
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    /// The managers' xpubs
-    pub managers: Vec<Manager>,
-    /// The stakeholders' xpubs and their cosigners' public keys
-    pub stakeholders: Vec<Stakeholder>,
-    /// Bitcoin network
-    pub network: Network,
+    /// The stakeholders' xpubs, which we need to reconstruct the transactions
+    #[serde(deserialize_with = "deserialize_xpubs")]
+    pub stakeholders_xpubs: Vec<DescriptorPublicKey>,
+    /// The cosigners' static public keys, includes our own
+    #[serde(deserialize_with = "deserialize_single_keys")]
+    pub cosigners_keys: Vec<DescriptorPublicKey>,
+    /// The managers', which we need the xpubs and Noise static pubkeys
+    pub managers: Vec<ManagerConfig>,
+    /// The unvault output scripts relative timelock
+    pub unvault_csv: u32,
     /// An optional custom data directory
     pub data_dir: Option<PathBuf>,
+    /// Whether to daemonize the process
+    pub daemon: Option<bool>,
     /// What messages to log
     pub log_level: Option<String>,
 }
@@ -125,39 +97,20 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-/// Get the absolute path to the revault configuration folder.
-
-/// It's a "revault/<network>/" directory in the XDG standard configuration directory for
-/// all OSes but Linux-based ones, for which it's `~/.revault/<network>/`.
-/// There is only one config file at `revault/config.toml`, which specifies the network.
-/// Rationale: we want to have the database in the same folder as the
-/// configuration file but for Linux the XDG specifies a data directory (`~/.local/share/`)
-/// different from the configuration one (`~/.config/`).
-pub fn config_folder_path() -> Result<PathBuf, ConfigError> {
-    #[cfg(target_os = "linux")]
-    let configs_dir = dirs::home_dir();
-
-    #[cfg(not(target_os = "linux"))]
-    let configs_dir = dirs::config_dir();
-
-    if let Some(mut path) = configs_dir {
-        #[cfg(target_os = "linux")]
-        path.push(".revault");
-
-        #[cfg(not(target_os = "linux"))]
-        path.push("Revault");
-
-        return Ok(path);
-    }
-
-    Err(ConfigError(
-        "Could not locate the configuration directory.".to_owned(),
-    ))
+/// Get the absolute path to the our configuration folder, it's `~/.cosignerd`.
+pub fn datadir_path() -> Result<PathBuf, ConfigError> {
+    dirs::home_dir()
+        .map(|mut path| {
+            path.push(".cosignerd");
+            path
+        })
+        .ok_or_else(|| ConfigError("Could not locate our data directory.".to_owned()))
 }
 
+/// Get the path to our config file, inside the data directory
 pub fn config_file_path() -> Result<PathBuf, ConfigError> {
-    config_folder_path().map(|mut path| {
-        path.push("revault.toml");
+    datadir_path().map(|mut path| {
+        path.push("config.toml");
         path
     })
 }
@@ -178,6 +131,12 @@ impl Config {
                     .map_err(|e| ConfigError(format!("Parsing configuration file: {}", e)))
             })?;
 
+        if config.stakeholders_xpubs.len() != config.cosigners_keys.len() {
+            return Err(ConfigError(
+                "Number of stakeholders xpubs and cosigning servers keys mismatch".to_string(),
+            ));
+        }
+
         Ok(config)
     }
 }
@@ -192,26 +151,29 @@ mod tests {
         // A valid config
         let toml_str = r#"
             data_dir = "tests/"
-            network = "bitcoin"
+
+            stakeholders_xpubs = [
+                "xpub661MyMwAqRbcEfj3aPs1HJtoyXfVqnqzrDCahd6Uvv7qMYc8AyG33UMNzGybwTBwKH5VZJMHaP4AWebzBtPbjvTPVEJjp2rEtaHZn6cgspv",
+                "xpub661MyMwAqRbcEaNLwKNmwFBcTyjVrjvv2Ce63kHaXFDtGXwyzzQEQQy4X3nAGTtCVYPpU9mntFmvowhfF1fAwqjRXamfdX4U2V8RGVrY6oD"
+            ]
+            cosigners_keys = [
+                "035ce843b5a153689c40946857502e04f45fe8e01993bb0b8d4035ec0f56c3a30a",
+                "02ab2e8fdb07d82a911a899f49a0f73d5585e248ed2a2d67bb0c776a609da3edd9"
+            ]
+
+            unvault_csv = 42
+
             [[managers]]
             xpub = "xpub6AtVcKWPpZ9t3Aa3VvzWid1dzJFeXPfNntPbkGsYjNrp7uhXpzSL5QVMCmaHqUzbVUGENEwbBbzF9E8emTxQeP3AzbMjfzvwSDkwUrxg2G4"
-            noise_pubkey = "[137, 236, 117, 33, 86, 176, 65, 253, 92, 172, 20, 249, 131, 155, 77, 60, 61, 194, 181, 65, 226, 99, 223, 207, 255, 71, 40, 219, 139, 152, 164, 120]"
+            noise_key = "91526407c80aa457ce89e8faef1bef2e7c7e303ae2f578e5e4f33465cbb9d0a9"
             [[managers]]
             xpub = "xpub6AMXQWzNN9GSrWk5SeKdEUK6Ntha87BBtprp95EGSsLiMkUedYcHh53P3J1frsnMqRSssARq6EdRnAJmizJMaBqxCrA3MVGjV7d9wNQAEtm"
-            noise_pubkey = "[137, 236, 117, 33, 86, 176, 65, 253, 92, 172, 20, 249, 131, 155, 77, 60, 61, 194, 181, 65, 226, 99, 223, 207, 255, 71, 40, 219, 139, 152, 164, 120]"
+            noise_key = "72c9be5363932b1aeaf1d8fa4bf0047b4e03c6e7e2f8db4c64876dc176b986cf"
             [[managers]]
             xpub = "xpub6BHATNyFVsBD8MRygTsv2q9WFTJzEB3o6CgJK7sjopcB286bmWFkNYm6kK5fzVe2gk4mJrSK5isFSFommNDST3RYJWSzrAe9V4bEzboHqnA"
-            noise_pubkey = "[137, 236, 117, 33, 86, 176, 65, 253, 92, 172, 20, 249, 131, 155, 77, 60, 61, 194, 181, 65, 226, 99, 223, 207, 255, 71, 40, 219, 139, 152, 164, 120]"
-            [[stakeholders]]
-            xpub = "xpub661MyMwAqRbcEfj3aPs1HJtoyXfVqnqzrDCahd6Uvv7qMYc8AyG33UMNzGybwTBwKH5VZJMHaP4AWebzBtPbjvTPVEJjp2rEtaHZn6cgspv"
-            cosigner_key = "xpub661MyMwAqRbcH5kBNDecJveq48q72p8ki8BaqhArhWcprScGNauLUhc3Ed2BqtXjJa8aGMMW3LstC5uRNY1QoKsyNLvH45u5KwihgWUJHkX"
-            [[stakeholders]]
-            xpub = "xpub661MyMwAqRbcEaNLwKNmwFBcTyjVrjvv2Ce63kHaXFDtGXwyzzQEQQy4X3nAGTtCVYPpU9mntFmvowhfF1fAwqjRXamfdX4U2V8RGVrY6oD"
-            cosigner_key = "xpub661MyMwAqRbcGeZKFNGhUb8XdhVTG8W8k12VBGV8cYPoveyt99eX5uZHdQ2pyw6YGu7JWc2v2auAMrRsW29S9PJBYsaadsC1o82iLRZduQp"
-
+            noise_key = "653bf272f7b691a0fa58fd9736693fbc09f18fc8648a66be6341ef7f3b1254f7"
         "#;
         let _config: Config = toml::from_str(toml_str).expect("Deserializing toml_str");
-        println!("_config.data_dir: {:?}", _config.data_dir);
 
         // Missing field "managers", will result in error
         let toml_str = r#"
@@ -226,20 +188,7 @@ mod tests {
     fn config_directory() {
         let filepath = config_file_path().expect("Getting config file path");
 
-        #[cfg(target_os = "linux")]
-        {
-            assert!(filepath.as_path().starts_with("/home/"));
-            assert!(filepath.as_path().ends_with(".revault/revault.toml"));
-        }
-
-        #[cfg(target_os = "macos")]
-        assert!(filepath
-            .as_path()
-            .ends_with("Library/Application Support/Revault/revault.toml"));
-
-        #[cfg(target_os = "windows")]
-        assert!(filepath
-            .as_path()
-            .ends_with(r#"AppData\Roaming\Revault\revault.toml"#));
+        assert!(filepath.as_path().starts_with("/home/"));
+        assert!(filepath.as_path().ends_with(".cosignerd/config.toml"));
     }
 }

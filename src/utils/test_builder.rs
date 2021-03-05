@@ -1,10 +1,6 @@
 use crate::{
     config::{config_file_path, datadir_path, Config, ManagerConfig},
     cosignerd::{create_datadir, CosignerD},
-    utils::keys::{
-        read_bitcoin_keys_file, read_noise_keys_file,
-        tests::{create_bitcoin_seed_file, create_noise_keys_file, generate_bitcoin_seed},
-    },
 };
 use revault_net::sodiumoxide;
 use revault_tx::{
@@ -72,12 +68,12 @@ fn cosignerd(n_man: usize) -> CosignerD {
         fs::remove_dir_all(&data_dir).expect("Removing former scratch datadir");
     }
     fs::create_dir(&data_dir).expect("Creating scratch datadir");
-    let addr = SocketAddr::from_str("127.0.0.1:9999").unwrap();
+    let listen = SocketAddr::from_str("127.0.0.1:8383").unwrap();
 
     CosignerD {
         managers,
         data_dir,
-        addr,
+        listen,
     }
 }
 

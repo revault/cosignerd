@@ -70,8 +70,11 @@ fn cosignerd(n_man: usize) -> CosignerD {
     fs::create_dir(&data_dir).expect("Creating scratch datadir");
     let listen = SocketAddr::from_str("127.0.0.1:8383").unwrap();
 
+    let noise_privkey = sodiumoxide::crypto::box_::gen_keypair().1;
+
     CosignerD {
         managers,
+        noise_privkey,
         data_dir,
         listen,
     }

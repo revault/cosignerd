@@ -13,7 +13,7 @@ CREATE TABLE signed_outpoints (
 
 ";
 
-// A row in the "spend_transactions" table
+/// A row in the "signed_outpoints" table
 pub struct DbSignedOutpoint {
     pub outpoint: OutPoint,
 }

@@ -83,6 +83,10 @@ fn cosignerd(n_man: usize, n_stk: usize) -> CosignerD {
         .unwrap()
         .to_path_buf();
     data_dir.push("scratch_datadir");
+    if data_dir.as_path().exists() {
+        fs::remove_dir_all(&data_dir).expect("Removing former scratch datadir");
+    }
+    fs::create_dir(&data_dir).expect("Creating scratch datadir");
     let addr = SocketAddr::from_str("127.0.0.1:9999").unwrap();
 
     CosignerD {

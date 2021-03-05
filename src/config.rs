@@ -5,14 +5,13 @@
 
 use revault_net::noise::PublicKey as NoisePubkey;
 use revault_tx::{
-    bitcoin::{hashes::hex::FromHex, util::bip32, PublicKey as BitcoinPubkey},
-    miniscript::descriptor::{DescriptorPublicKey, DescriptorSinglePub, DescriptorXKey},
-    scripts::{CpfpDescriptor, UnvaultDescriptor},
+    bitcoin::{hashes::hex::FromHex, util::bip32},
+    miniscript::descriptor::{DescriptorPublicKey, DescriptorXKey},
 };
 use serde::{de, Deserialize, Deserializer};
-use std::{path::PathBuf, vec::Vec};
+use std::{net::SocketAddr, path::PathBuf, str::FromStr, vec::Vec};
 
-pub fn deserialize_noisepubkey<'de, D>(deserializer: D) -> Result<NoisePubkey, D::Error>
+fn deserialize_noisepubkey<'de, D>(deserializer: D) -> Result<NoisePubkey, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -39,6 +38,10 @@ where
     Ok(xpub_to_desc_xpub(xpub))
 }
 
+fn listen_default() -> SocketAddr {
+    SocketAddr::from(([127, 0, 0, 1], 8383))
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ManagerConfig {
     #[serde(deserialize_with = "deserialize_xpub")]
@@ -54,6 +57,9 @@ pub struct Config {
     pub managers: Vec<ManagerConfig>,
     /// An optional custom data directory
     pub data_dir: Option<PathBuf>,
+    /// What interface to listen on
+    #[serde(default = "listen_default")]
+    pub listen: SocketAddr,
     /// Whether to daemonize the process
     pub daemon: Option<bool>,
     /// What messages to log
@@ -119,6 +125,8 @@ mod tests {
         // A valid config
         let toml_str = r#"
             data_dir = "tests/"
+
+            # Note that we don't need to provide 'listen', it'll just use the default.
 
             [[managers]]
             xpub = "xpub6AtVcKWPpZ9t3Aa3VvzWid1dzJFeXPfNntPbkGsYjNrp7uhXpzSL5QVMCmaHqUzbVUGENEwbBbzF9E8emTxQeP3AzbMjfzvwSDkwUrxg2G4"

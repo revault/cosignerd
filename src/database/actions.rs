@@ -104,7 +104,7 @@ mod test {
     #[test]
     #[serial]
     fn test_db_creation() {
-        let mut test_framework = CosignerTestBuilder::new(3, 4);
+        let mut test_framework = CosignerTestBuilder::new(3);
 
         create_db(&mut test_framework.cosignerd).unwrap();
 
@@ -130,11 +130,11 @@ mod test {
     #[test]
     #[serial]
     fn test_db_signed_outpoints() {
-        let mut test_framework = CosignerTestBuilder::new(3, 4);
+        let mut test_framework = CosignerTestBuilder::new(7);
         create_db(&mut test_framework.cosignerd).unwrap();
 
         let db_path = test_framework.cosignerd.db_file();
-        let spend_tx = test_framework.generate_spend_tx(5, 1);
+        let spend_tx = test_framework.generate_spend_tx(4, 3, 98);
         let outpoint = spend_tx.inner_tx().global.unsigned_tx.input[0].previous_output;
 
         db_insert_signed_outpoint(&db_path, outpoint).expect("Error inserting signed outpoint");

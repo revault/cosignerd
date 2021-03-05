@@ -3,12 +3,15 @@ use crate::{
     utils::keys::{read_bitcoin_keys_file, read_noise_keys_file},
 };
 use revault_net::noise::SecretKey;
-use revault_tx::miniscript::{
-    bitcoin::{
-        util::bip32::{ExtendedPrivKey, ExtendedPubKey},
-        Network,
+use revault_tx::{
+    miniscript::{
+        bitcoin::{
+            util::bip32::{ExtendedPrivKey, ExtendedPubKey},
+            Network,
+        },
+        DescriptorPublicKey,
     },
-    DescriptorPublicKey,
+    scripts::{DepositDescriptor, UnvaultDescriptor},
 };
 use std::{
     fs,
@@ -20,9 +23,8 @@ use std::{
 /// Our global state
 #[derive(Debug)]
 pub struct CosignerD {
-    pub stakeholders_keys: Vec<DescriptorPublicKey>,
-    pub cosigners_keys: Vec<DescriptorPublicKey>,
     pub managers: Vec<ManagerConfig>,
+
     /// ip::port (FIXME: default? always same?)
     pub addr: SocketAddr,
     // We store all our data in one place, that's here.
@@ -36,9 +38,7 @@ pub fn create_datadir(datadir_path: &PathBuf) -> Result<(), std::io::Error> {
 
 impl CosignerD {
     pub fn from_config(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
-        let stakeholders_keys = config.stakeholders_xpubs;
         let managers = config.managers;
-        let cosigners_keys = config.cosigners_keys;
 
         // FIXME: WTF
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8000);
@@ -56,8 +56,6 @@ impl CosignerD {
         data_dir = fs::canonicalize(data_dir)?;
 
         Ok(CosignerD {
-            stakeholders_keys,
-            cosigners_keys,
             managers,
             addr,
             data_dir,
@@ -83,13 +81,5 @@ impl CosignerD {
 
     pub fn db_file(&self) -> PathBuf {
         self.file_from_datadir("cosignerd.sqlite3")
-    }
-
-    pub fn bitcoin_keys_file(&self) -> PathBuf {
-        self.file_from_datadir("cosigner_bitcoin.keys")
-    }
-
-    pub fn noise_keys_file(&self) -> PathBuf {
-        self.file_from_datadir("cosigner_noise.keys")
     }
 }

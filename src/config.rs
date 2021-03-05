@@ -7,6 +7,7 @@ use revault_net::noise::PublicKey as NoisePubkey;
 use revault_tx::{
     bitcoin::{hashes::hex::FromHex, util::bip32, PublicKey as BitcoinPubkey},
     miniscript::descriptor::{DescriptorPublicKey, DescriptorSinglePub, DescriptorXKey},
+    scripts::{CpfpDescriptor, UnvaultDescriptor},
 };
 use serde::{de, Deserialize, Deserializer};
 use std::{path::PathBuf, vec::Vec};
@@ -38,25 +39,6 @@ where
     Ok(xpub_to_desc_xpub(xpub))
 }
 
-fn deserialize_xpubs<'de, D>(deserializer: D) -> Result<Vec<DescriptorPublicKey>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let xpubs = Vec::<bip32::ExtendedPubKey>::deserialize(deserializer)?;
-    Ok(xpubs.into_iter().map(xpub_to_desc_xpub).collect())
-}
-
-fn deserialize_single_keys<'de, D>(deserializer: D) -> Result<Vec<DescriptorPublicKey>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let xpubs = Vec::<BitcoinPubkey>::deserialize(deserializer)?;
-    Ok(xpubs
-        .into_iter()
-        .map(|key| DescriptorPublicKey::SinglePub(DescriptorSinglePub { origin: None, key }))
-        .collect())
-}
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct ManagerConfig {
     #[serde(deserialize_with = "deserialize_xpub")]
@@ -68,16 +50,8 @@ pub struct ManagerConfig {
 /// Static informations we require to operate
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    /// The stakeholders' xpubs, which we need to reconstruct the transactions
-    #[serde(deserialize_with = "deserialize_xpubs")]
-    pub stakeholders_xpubs: Vec<DescriptorPublicKey>,
-    /// The cosigners' static public keys, includes our own
-    #[serde(deserialize_with = "deserialize_single_keys")]
-    pub cosigners_keys: Vec<DescriptorPublicKey>,
-    /// The managers', which we need the xpubs and Noise static pubkeys
+    /// The managers', for which we need the xpubs and Noise static pubkeys
     pub managers: Vec<ManagerConfig>,
-    /// The unvault output scripts relative timelock
-    pub unvault_csv: u32,
     /// An optional custom data directory
     pub data_dir: Option<PathBuf>,
     /// Whether to daemonize the process
@@ -131,12 +105,6 @@ impl Config {
                     .map_err(|e| ConfigError(format!("Parsing configuration file: {}", e)))
             })?;
 
-        if config.stakeholders_xpubs.len() != config.cosigners_keys.len() {
-            return Err(ConfigError(
-                "Number of stakeholders xpubs and cosigning servers keys mismatch".to_string(),
-            ));
-        }
-
         Ok(config)
     }
 }
@@ -151,17 +119,6 @@ mod tests {
         // A valid config
         let toml_str = r#"
             data_dir = "tests/"
-
-            stakeholders_xpubs = [
-                "xpub661MyMwAqRbcEfj3aPs1HJtoyXfVqnqzrDCahd6Uvv7qMYc8AyG33UMNzGybwTBwKH5VZJMHaP4AWebzBtPbjvTPVEJjp2rEtaHZn6cgspv",
-                "xpub661MyMwAqRbcEaNLwKNmwFBcTyjVrjvv2Ce63kHaXFDtGXwyzzQEQQy4X3nAGTtCVYPpU9mntFmvowhfF1fAwqjRXamfdX4U2V8RGVrY6oD"
-            ]
-            cosigners_keys = [
-                "035ce843b5a153689c40946857502e04f45fe8e01993bb0b8d4035ec0f56c3a30a",
-                "02ab2e8fdb07d82a911a899f49a0f73d5585e248ed2a2d67bb0c776a609da3edd9"
-            ]
-
-            unvault_csv = 42
 
             [[managers]]
             xpub = "xpub6AtVcKWPpZ9t3Aa3VvzWid1dzJFeXPfNntPbkGsYjNrp7uhXpzSL5QVMCmaHqUzbVUGENEwbBbzF9E8emTxQeP3AzbMjfzvwSDkwUrxg2G4"

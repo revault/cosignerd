@@ -1,7 +1,7 @@
 use cosigning_server::{config::Config, cosignerd::CosignerD};
 use daemonize_simple::Daemonize;
-use revault_net::message;
-use std::{env, path::PathBuf, process, str::FromStr};
+use revault_net::{message::cosigner::Sign, noise::PublicKey as NoisePubkey};
+use std::{env, net::TcpListener, path::PathBuf, process, str::FromStr};
 
 fn parse_args(args: Vec<String>) -> Option<PathBuf> {
     if args.len() == 1 {
@@ -44,6 +44,63 @@ fn setup_logger(
     Ok(())
 }
 
+// Wait for connections from managers on the configured interface and process `sign` messages.
+fn daemon_main(mut cosignerd: CosignerD) {
+    let host = cosignerd.listen;
+    let listener = TcpListener::bind(host).unwrap_or_else(|e| {
+        log::error!("Error binding on '{}': '{}'", host, e);
+        process::exit(1);
+    });
+    let managers_noise_pubkeys: Vec<NoisePubkey> =
+        cosignerd.managers.iter().map(|m| m.noise_key).collect();
+
+    // We expect a single connection once in a while, there is *no need* for complexity here so
+    // just treat incoming connections sequentially.
+    for stream in listener.incoming() {
+        log::trace!("Got a new connection: '{:?}'", stream);
+        let stream = match stream {
+            Ok(s) => s,
+            Err(e) => continue,
+        };
+        // This does the Noise KK handshake.
+        let mut kk_stream = match revault_net::transport::KKTransport::accept(
+            &listener,
+            &cosignerd.noise_privkey,
+            &managers_noise_pubkeys,
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Error during handshake: '{}'", e);
+                continue;
+            }
+        };
+
+        let buf = match kk_stream.read() {
+            Ok(buf) => buf,
+            Err(e) => {
+                log::error!("Error reading from stream '{:?}': '{}'", stream, e);
+                continue;
+            }
+        };
+        log::debug!(
+            "Got '{}' from '{}'",
+            String::from_utf8_lossy(&buf),
+            revault_net::sodiumoxide::hex::encode(&kk_stream.remote_static().0)
+        );
+        let sign_msg: Sign = match serde_json::from_slice(&buf) {
+            Ok(msg) => msg,
+            // FIXME: This should probably be fatal, they are violating the protocol
+            Err(e) => {
+                log::error!("Decoding sign message: '{}'", e);
+                continue;
+            }
+        };
+        log::trace!("Decoded: {:#?}", sign_msg);
+
+        // TODO: process sign message
+    }
+}
+
 fn main() {
     let args = env::args().collect();
     let conf_file = parse_args(args);
@@ -75,16 +132,7 @@ fn main() {
         eprintln!("Error daemonizing: {}", e);
         process::exit(1);
     });
+    log::info!("Started cosignerd daemon.");
 
     daemon_main(cosignerd);
-}
-
-fn daemon_main(mut cosignerd: CosignerD) {
-    println!("Started cosigner daemon... ");
-
-    let db_path = cosignerd.db_file();
-
-    log::info!("Setting up database");
-
-    // TODO: set up db and integrate revault_net and revault_tx for cosigner functionality
 }

@@ -1,6 +1,5 @@
 mod schema;
 
-use crate::cosignerd::CosignerD;
 use revault_tx::miniscript::bitcoin::{self, consensus::encode, OutPoint};
 use rusqlite::{params, types::FromSqlError, Row, ToSql};
 use schema::{DbSignedOutpoint, SCHEMA};
@@ -196,7 +195,7 @@ mod test {
     #[test]
     #[serial]
     fn db_creation_sanity() {
-        let mut test_framework = CosignerTestBuilder::new(3);
+        let test_framework = CosignerTestBuilder::new(3);
         let db_path = &test_framework.cosignerd.db_file();
 
         // We can't create it twice
@@ -219,7 +218,7 @@ mod test {
     #[test]
     #[serial]
     fn signed_outpoints_insertion_sanity() {
-        let mut test_framework = CosignerTestBuilder::new(7);
+        let test_framework = CosignerTestBuilder::new(7);
 
         let db_path = test_framework.cosignerd.db_file();
         let outpoint = OutPoint::from_str(

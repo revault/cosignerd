@@ -1,7 +1,7 @@
 use cosigning_server::{config::Config, cosignerd::CosignerD};
 use daemonize_simple::Daemonize;
 use revault_net::{message::cosigner::Sign, noise::PublicKey as NoisePubkey};
-use std::{env, net::TcpListener, path::PathBuf, process, str::FromStr};
+use std::{env, net::TcpListener, path::PathBuf, process};
 
 fn parse_args(args: Vec<String>) -> Option<PathBuf> {
     if args.len() == 1 {
@@ -45,7 +45,7 @@ fn setup_logger(
 }
 
 // Wait for connections from managers on the configured interface and process `sign` messages.
-fn daemon_main(mut cosignerd: CosignerD) {
+fn daemon_main(cosignerd: CosignerD) {
     let host = cosignerd.listen;
     let listener = TcpListener::bind(host).unwrap_or_else(|e| {
         log::error!("Error binding on '{}': '{}'", host, e);
@@ -60,7 +60,7 @@ fn daemon_main(mut cosignerd: CosignerD) {
         log::trace!("Got a new connection: '{:?}'", stream);
         let stream = match stream {
             Ok(s) => s,
-            Err(e) => continue,
+            Err(_) => continue,
         };
         // This does the Noise KK handshake.
         let mut kk_stream = match revault_net::transport::KKTransport::accept(
@@ -112,7 +112,7 @@ fn main() {
     let log_level = config.log_level;
 
     // Construct CosignerD (global state)
-    let mut cosignerd = CosignerD::from_config(config).unwrap_or_else(|e| {
+    let cosignerd = CosignerD::from_config(config).unwrap_or_else(|e| {
         eprintln!("Error creating global state: {}", e);
         process::exit(1);
     });

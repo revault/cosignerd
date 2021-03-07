@@ -1,30 +1,24 @@
-use crate::{
-    config::{config_file_path, datadir_path, Config, ManagerConfig},
-    cosignerd::{create_datadir, CosignerD},
-    database::setup_db,
-};
+use crate::{config::ManagerConfig, cosignerd::CosignerD, database::setup_db};
 use revault_net::sodiumoxide;
 use revault_tx::{
     miniscript::{
         bitcoin::{
-            self, secp256k1,
+            secp256k1,
             secp256k1::rand::{rngs::SmallRng, FromEntropy, RngCore},
-            util::bip32::{self, ChildNumber, ExtendedPrivKey, ExtendedPubKey},
-            Network, OutPoint, Transaction, TxIn, TxOut,
+            util::bip32::{self, ChildNumber},
+            Network, OutPoint, TxOut,
         },
         descriptor::{
             DescriptorPublicKey, DescriptorPublicKeyCtx, DescriptorSinglePub, DescriptorXKey,
         },
-        NullCtx,
     },
-    scripts::{cpfp_descriptor, deposit_descriptor, unvault_descriptor, UnvaultDescriptor},
-    transactions::{DepositTransaction, SpendTransaction, UnvaultTransaction},
+    scripts::{cpfp_descriptor, unvault_descriptor},
+    transactions::SpendTransaction,
     txins::UnvaultTxIn,
     txouts::{ExternalTxOut, SpendTxOut, UnvaultTxOut},
 };
 use std::{
-    fs::{self, remove_file, File},
-    io::Write,
+    fs::{self},
     net::SocketAddr,
     path::PathBuf,
     str::FromStr,
@@ -101,7 +95,7 @@ impl CosignerTestBuilder {
     /// To test signing, database and transport and functionalities, we need
     /// spend transactions where the cosigning server is a valid participant
     /// and can add their signature.
-    pub fn generate_spend_tx(&self, n_stk: usize, csv: u32, thresh: usize) -> SpendTransaction {
+    pub fn generate_spend_tx(&self, n_stk: usize, csv: u32) -> SpendTransaction {
         let mut rng = SmallRng::from_entropy();
         let secp = secp256k1::Secp256k1::new();
         let xpub_ctx = DescriptorPublicKeyCtx::new(&secp, ChildNumber::from(0));
@@ -174,6 +168,6 @@ mod tests {
     #[serial]
     fn test_builder() {
         let test_framework = CosignerTestBuilder::new(5);
-        test_framework.generate_spend_tx(5, 10, 2);
+        test_framework.generate_spend_tx(5, 10);
     }
 }

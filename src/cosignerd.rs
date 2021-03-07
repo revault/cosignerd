@@ -4,9 +4,7 @@ use crate::{
 };
 
 use revault_net::{noise::SecretKey as NoisePrivKey, sodiumoxide};
-use revault_tx::bitcoin::secp256k1::{
-    key::ONE_KEY, Error as SecpError, SecretKey as BitcoinPrivKey,
-};
+use revault_tx::bitcoin::secp256k1::{Error as SecpError, SecretKey as BitcoinPrivKey};
 
 use std::{
     fs,

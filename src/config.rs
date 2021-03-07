@@ -38,8 +38,20 @@ where
     Ok(xpub_to_desc_xpub(xpub))
 }
 
+fn deserialize_loglevel<'de, D>(deserializer: D) -> Result<log::LevelFilter, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let level_str = String::deserialize(deserializer)?;
+    log::LevelFilter::from_str(&level_str).map_err(de::Error::custom)
+}
+
 fn listen_default() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 8383))
+}
+
+fn loglevel_default() -> log::LevelFilter {
+    log::LevelFilter::Info
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -63,7 +75,11 @@ pub struct Config {
     /// Whether to daemonize the process
     pub daemon: Option<bool>,
     /// What messages to log
-    pub log_level: Option<String>,
+    #[serde(
+        deserialize_with = "deserialize_loglevel",
+        default = "loglevel_default"
+    )]
+    pub log_level: log::LevelFilter,
 }
 
 #[derive(PartialEq, Eq, Debug)]

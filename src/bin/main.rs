@@ -52,14 +52,7 @@ fn main() {
         eprintln!("Error parsing config: {}", e);
         process::exit(1);
     });
-    let log_level = if let Some(ref level) = &config.log_level {
-        log::LevelFilter::from_str(level.as_str()).unwrap_or_else(|e| {
-            eprintln!("Invalid log level: {}", e);
-            process::exit(1);
-        })
-    } else {
-        log::LevelFilter::Trace
-    };
+    let log_level = config.log_level;
 
     // Construct CosignerD (global state)
     let mut cosignerd = CosignerD::from_config(config).unwrap_or_else(|e| {

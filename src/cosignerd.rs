@@ -1,6 +1,9 @@
 use crate::config::{datadir_path, Config, ConfigError, ManagerConfig};
 
 use revault_net::{noise::SecretKey as NoisePrivKey, sodiumoxide};
+use revault_tx::bitcoin::secp256k1::{
+    key::ONE_KEY, Error as SecpError, SecretKey as BitcoinPrivKey,
+};
 
 use std::{
     fs,
@@ -13,7 +16,12 @@ use std::{
 /// An error occuring initializing our global state
 #[derive(Debug)]
 pub enum CosignerDError {
-    NoiseKeyError(io::Error),
+    NoiseKey(io::Error),
+    BitcoinKeyRead(io::Error),
+    // All 0-2^256 numbers are valid private keys on Curve25519 (for Noise above), but that does
+    // not hold for Bitcoin's secp256k1.
+    /// Returned if the file does not contain a valid Secp256k1 private key
+    BitcoinKeyVerify(SecpError),
     ConfigError(ConfigError),
     DatadirCreation(io::Error),
 }
@@ -21,7 +29,9 @@ pub enum CosignerDError {
 impl std::fmt::Display for CosignerDError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::NoiseKeyError(e) => write!(f, "Noise key initialization error: '{}'", e),
+            Self::NoiseKey(e) => write!(f, "Noise key initialization error: '{}'", e),
+            Self::BitcoinKeyRead(e) => write!(f, "Bitcoin key read error: '{}'", e),
+            Self::BitcoinKeyVerify(e) => write!(f, "Bitcoin key verification error: '{}'", e),
             Self::ConfigError(e) => write!(f, "Configuration error: '{}'", e),
             Self::DatadirCreation(e) => write!(f, "Creating data directory: '{}'", e),
         }
@@ -32,7 +42,7 @@ impl std::fmt::Display for CosignerDError {
 #[derive(Debug)]
 pub struct CosignerD {
     pub managers: Vec<ManagerConfig>,
-
+    pub bitcoin_privkey: BitcoinPrivKey,
     pub noise_privkey: NoisePrivKey,
 
     pub listen: SocketAddr,
@@ -57,21 +67,36 @@ fn read_or_create_noise_key(secret_file: &PathBuf) -> Result<NoisePrivKey, Cosig
 
         let mut fd = options
             .open(secret_file)
-            .map_err(CosignerDError::NoiseKeyError)?;
+            .map_err(CosignerDError::NoiseKey)?;
         fd.write_all(&noise_secret.as_ref())
-            .map_err(CosignerDError::NoiseKeyError)?;
+            .map_err(CosignerDError::NoiseKey)?;
     } else {
-        let mut noise_secret_fd =
-            fs::File::open(secret_file).map_err(CosignerDError::NoiseKeyError)?;
+        let mut noise_secret_fd = fs::File::open(secret_file).map_err(CosignerDError::NoiseKey)?;
         noise_secret_fd
             .read_exact(&mut noise_secret.0)
-            .map_err(CosignerDError::NoiseKeyError)?;
+            .map_err(CosignerDError::NoiseKey)?;
     }
 
     // TODO: have a decent memory management and mlock() the key
 
     assert!(noise_secret.0 != [0; 32]);
     Ok(noise_secret)
+}
+
+// The Bitcoin key is hot too (for now) but is part of the onchain Script and is generated
+// during the setup Ceremony.
+fn read_bitcoin_privkey(secret_file: &PathBuf) -> Result<BitcoinPrivKey, CosignerDError> {
+    // 0xffffff....ffff is not a valid privkey so this ensures we read correctly.
+    let mut buf = [0xff; 32];
+
+    let mut bitcoin_secret_fd =
+        fs::File::open(secret_file).map_err(CosignerDError::BitcoinKeyRead)?;
+    bitcoin_secret_fd
+        .read_exact(&mut buf)
+        .map_err(CosignerDError::BitcoinKeyRead)?;
+
+    // FIXME: buf zeroization, mlock of the key, decent mem management
+    BitcoinPrivKey::from_slice(&buf).map_err(CosignerDError::BitcoinKeyVerify)
 }
 
 pub fn create_datadir(datadir_path: &PathBuf) -> Result<(), std::io::Error> {
@@ -96,9 +121,14 @@ impl CosignerD {
         noise_key_path.push("noise_secret");
         let noise_privkey = read_or_create_noise_key(&noise_key_path)?;
 
+        let mut bitcoin_key_path = data_dir.clone();
+        bitcoin_key_path.push("bitcoin_secret");
+        let bitcoin_privkey = read_bitcoin_privkey(&bitcoin_key_path)?;
+
         Ok(CosignerD {
             managers,
             noise_privkey,
+            bitcoin_privkey,
             listen,
             data_dir,
         })

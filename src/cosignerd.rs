@@ -1,4 +1,7 @@
-use crate::config::{datadir_path, Config, ConfigError, ManagerConfig};
+use crate::{
+    config::{datadir_path, Config, ConfigError, ManagerConfig},
+    database::{setup_db, DatabaseError},
+};
 
 use revault_net::{noise::SecretKey as NoisePrivKey, sodiumoxide};
 use revault_tx::bitcoin::secp256k1::{
@@ -24,6 +27,7 @@ pub enum CosignerDError {
     BitcoinKeyVerify(SecpError),
     ConfigError(ConfigError),
     DatadirCreation(io::Error),
+    Database(DatabaseError),
 }
 
 impl std::fmt::Display for CosignerDError {
@@ -34,6 +38,7 @@ impl std::fmt::Display for CosignerDError {
             Self::BitcoinKeyVerify(e) => write!(f, "Bitcoin key verification error: '{}'", e),
             Self::ConfigError(e) => write!(f, "Configuration error: '{}'", e),
             Self::DatadirCreation(e) => write!(f, "Creating data directory: '{}'", e),
+            Self::Database(e) => write!(f, "Error setting up database: '{}'", e),
         }
     }
 }
@@ -124,6 +129,10 @@ impl CosignerD {
         let mut bitcoin_key_path = data_dir.clone();
         bitcoin_key_path.push("bitcoin_secret");
         let bitcoin_privkey = read_bitcoin_privkey(&bitcoin_key_path)?;
+
+        let mut db_path = data_dir.clone();
+        db_path.push("cosignerd.sqlite3");
+        setup_db(&db_path).map_err(CosignerDError::Database)?;
 
         Ok(CosignerD {
             managers,

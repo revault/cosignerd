@@ -1,6 +1,7 @@
 use crate::{
     config::{config_file_path, datadir_path, Config, ManagerConfig},
     cosignerd::{create_datadir, CosignerD},
+    database::setup_db,
 };
 use revault_net::sodiumoxide;
 use revault_tx::{
@@ -72,6 +73,10 @@ fn cosignerd(n_man: usize) -> CosignerD {
 
     let noise_privkey = sodiumoxide::crypto::box_::gen_keypair().1;
     let bitcoin_privkey = secp256k1::SecretKey::new(&mut rng);
+
+    let mut db_path = data_dir.clone();
+    db_path.push("cosignerd.sqlite3");
+    setup_db(&db_path).expect("Setting up db");
 
     CosignerD {
         managers,

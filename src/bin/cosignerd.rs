@@ -1,6 +1,6 @@
-use cosigning_server::{config::Config, cosignerd::CosignerD};
+use cosigning_server::{config::Config, cosignerd::CosignerD, processing::process_sign_message};
 use daemonize_simple::Daemonize;
-use revault_net::{message::cosigner::Sign, noise::PublicKey as NoisePubkey};
+use revault_net::{message::cosigner::SignRequest, noise::PublicKey as NoisePubkey};
 use std::{env, net::TcpListener, path::PathBuf, process};
 
 fn parse_args(args: Vec<String>) -> Option<PathBuf> {
@@ -87,7 +87,7 @@ fn daemon_main(cosignerd: CosignerD) {
             String::from_utf8_lossy(&buf),
             revault_net::sodiumoxide::hex::encode(&kk_stream.remote_static().0)
         );
-        let sign_msg: Sign = match serde_json::from_slice(&buf) {
+        let sign_msg: SignRequest = match serde_json::from_slice(&buf) {
             Ok(msg) => msg,
             // FIXME: This should probably be fatal, they are violating the protocol
             Err(e) => {
@@ -95,9 +95,28 @@ fn daemon_main(cosignerd: CosignerD) {
                 continue;
             }
         };
-        log::trace!("Decoded: {:#?}", sign_msg);
+        log::trace!("Decoded request: {:#?}", sign_msg);
 
-        // TODO: process sign message
+        let resp = match process_sign_message(&cosignerd, sign_msg) {
+            Ok(resp) => resp,
+            Err(e) => {
+                log::error!("Error when processing 'sign' message: '{}'", e);
+                continue;
+            }
+        };
+        log::trace!("Decoded response: {:#?}", resp);
+
+        let resp = match serde_json::to_vec(&resp) {
+            Ok(resp) => resp,
+            Err(e) => {
+                log::error!("Error serializing 'sign' response: '{}'", e);
+                continue;
+            }
+        };
+        log::debug!("Responding with '{}'", String::from_utf8_lossy(&resp));
+        if let Err(e) = kk_stream.write(&resp) {
+            log::error!("Error writing response: '{}'", e);
+        }
     }
 }
 

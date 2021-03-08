@@ -112,7 +112,7 @@ pub fn db_signed_outpoint(
 /// Insert a signed outpoint into the database.
 pub fn db_insert_signed_outpoint(
     db_path: &PathBuf,
-    signed_outpoint: OutPoint,
+    signed_outpoint: &OutPoint,
 ) -> Result<(), DatabaseError> {
     db_exec(db_path, |tx| {
         tx.execute(
@@ -226,7 +226,7 @@ mod test {
         )
         .unwrap();
 
-        db_insert_signed_outpoint(&db_path, outpoint).expect("Error inserting signed outpoint");
+        db_insert_signed_outpoint(&db_path, &outpoint).expect("Error inserting signed outpoint");
         db_signed_outpoint(&db_path, &outpoint).expect("");
     }
 }

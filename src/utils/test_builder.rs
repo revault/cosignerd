@@ -95,11 +95,13 @@ impl CosignerTestBuilder {
     /// To test signing, database and transport and functionalities, we need
     /// spend transactions where the cosigning server is a valid participant
     /// and can add their signature.
-    pub fn generate_spend_tx(&self, n_stk: usize, csv: u32) -> SpendTransaction {
+    pub fn generate_spend_tx(&self, outpoints: &[OutPoint]) -> SpendTransaction {
         let mut rng = SmallRng::from_entropy();
         let secp = secp256k1::Secp256k1::new();
         let xpub_ctx = DescriptorPublicKeyCtx::new(&secp, ChildNumber::from(0));
         let unvault_value: u64 = 100000000;
+        let n_stk = 10;
+        let csv = 12;
 
         let mut stakeholders_keys = Vec::with_capacity(n_stk);
         let mut cosigners_keys = Vec::with_capacity(n_stk);
@@ -128,27 +130,25 @@ impl CosignerTestBuilder {
             managers_keys.clone(),
             1,
             cosigners_keys,
-            18,
+            csv,
         )
         .expect("Unvault descriptor generation error");
         let cpfp_descriptor = cpfp_descriptor(managers_keys).expect("CPFP desc generation error");
 
-        let unvault_txout = UnvaultTxOut::new(unvault_value, &unvault_descriptor, xpub_ctx);
-        let unvault_txin = UnvaultTxIn::new(
-            OutPoint::from_str(
-                "2b8930127e9dfd1bcdf35df2bc7f3b8cdbec083b1ae693f36b6305fccd1425da:0",
-            )
-            .unwrap(),
-            unvault_txout,
-            csv,
-        );
+        let unvault_txins: Vec<UnvaultTxIn> = outpoints
+            .iter()
+            .map(|o| {
+                let unvault_txout = UnvaultTxOut::new(unvault_value, &unvault_descriptor, xpub_ctx);
+                UnvaultTxIn::new(*o, unvault_txout, csv)
+            })
+            .collect();
         let spend_txo = ExternalTxOut::new(TxOut {
-            value: unvault_value - 50_000, // FIXME: we could compute the actual price
+            value: unvault_value * unvault_txins.len() as u64 - 50_000 * unvault_txins.len() as u64, // FIXME: we could compute the actual price
             ..TxOut::default()
         });
 
         SpendTransaction::new(
-            vec![unvault_txin],
+            unvault_txins,
             vec![SpendTxOut::Destination(spend_txo.clone())],
             &cpfp_descriptor,
             xpub_ctx,
@@ -159,7 +159,6 @@ impl CosignerTestBuilder {
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
     use serial_test::serial;
@@ -168,6 +167,19 @@ mod tests {
     #[serial]
     fn test_builder() {
         let test_framework = CosignerTestBuilder::new(5);
-        test_framework.generate_spend_tx(5, 10);
+        test_framework.generate_spend_tx(&[
+            OutPoint::from_str(
+                "2b8930127e9dfd1bcdf35df2bc7f3b8cdbec083b1ae693f36b6305fccd1425da:0",
+            )
+            .unwrap(),
+            OutPoint::from_str(
+                "ceca4de398c63b29543f8346c09fd7522fd8661ce8bdc0e454e8d6ed8ad46a0d:1",
+            )
+            .unwrap(),
+            OutPoint::from_str(
+                "0b38682347207cd79de33edf8897a75abe7d8799b194439150306773b6aef55a:189",
+            )
+            .unwrap(),
+        ]);
     }
 }

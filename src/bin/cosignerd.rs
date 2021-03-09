@@ -1,4 +1,4 @@
-use cosigning_server::{config::Config, cosignerd::CosignerD, processing::process_sign_message};
+use cosignerd::{config::Config, cosignerd::CosignerD, processing::process_sign_message};
 use daemonize_simple::Daemonize;
 use revault_net::{message::cosigner::SignRequest, noise::PublicKey as NoisePubkey};
 use std::{env, net::TcpListener, path::PathBuf, process};

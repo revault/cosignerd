@@ -1,5 +1,5 @@
 [package]
-name = "cosigning_server"
+name = "cosignerd"
 version = "0.0.1"
 authors = ["JSwambo <jake.t.swambo@hotmail.co.uk>", "Antoine Poinsot <darosior@protonmail.com>"]
 edition = "2018"

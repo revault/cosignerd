@@ -243,7 +243,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 
 [[package]]
-name = "cosigning_server"
+name = "cosignerd"
 version = "0.0.1"
 dependencies = [
  "bitcoin",
@@ -792,7 +792,7 @@ dependencies = [
 [[package]]
 name = "revault_net"
 version = "0.0.1"
-source = "git+https://github.com/revault/revault_net#c2b0c9d91b79040d75311ed46d7bfcef8527a034"
+source = "git+https://github.com/revault/revault_net#cc288f73ff59deec8e82c64494af81f3e946419e"
 dependencies = [
  "revault_tx",
  "serde",

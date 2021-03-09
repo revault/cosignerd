@@ -188,7 +188,7 @@ pub fn setup_db(db_path: &PathBuf) -> Result<(), DatabaseError> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::utils::test_builder::CosignerTestBuilder;
+    use crate::tests::builder::CosignerTestBuilder;
     use serial_test::serial;
     use std::str::FromStr;
 

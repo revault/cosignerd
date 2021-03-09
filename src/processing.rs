@@ -90,7 +90,7 @@ pub fn process_sign_message(
 
 #[cfg(test)]
 mod test {
-    use crate::{processing::process_sign_message, utils::test_builder::CosignerTestBuilder};
+    use crate::{processing::process_sign_message, tests::builder::CosignerTestBuilder};
     use revault_net::message::cosigner::*;
     use revault_tx::{bitcoin::OutPoint, transactions::RevaultTransaction};
     use std::str::FromStr;

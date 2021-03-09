@@ -17,12 +17,7 @@ use revault_tx::{
     txins::UnvaultTxIn,
     txouts::{ExternalTxOut, SpendTxOut, UnvaultTxOut},
 };
-use std::{
-    fs::{self},
-    net::SocketAddr,
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr};
 
 fn random_privkey(rng: &mut SmallRng) -> bip32::ExtendedPrivKey {
     let mut rand_bytes = [0u8; 64];
@@ -92,9 +87,6 @@ impl CosignerTestBuilder {
         CosignerTestBuilder { cosignerd }
     }
 
-    /// To test signing, database and transport and functionalities, we need
-    /// spend transactions where the cosigning server is a valid participant
-    /// and can add their signature.
     pub fn generate_spend_tx(&self, outpoints: &[OutPoint]) -> SpendTransaction {
         let mut rng = SmallRng::from_entropy();
         let secp = secp256k1::Secp256k1::new();

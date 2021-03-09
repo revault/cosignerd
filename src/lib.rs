@@ -10,5 +10,5 @@ pub mod database;
 /// Protocol message processing, we only have to handle a single message.
 pub mod processing;
 
-/// FIXME: does not make sense to have an 'util' module
-pub mod utils;
+#[cfg(test)]
+pub mod tests;

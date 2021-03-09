@@ -17,7 +17,10 @@ use revault_tx::{
     txins::UnvaultTxIn,
     txouts::{ExternalTxOut, SpendTxOut, UnvaultTxOut},
 };
+
 use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr};
+
+use libc;
 
 fn random_privkey(rng: &mut SmallRng) -> bip32::ExtendedPrivKey {
     let mut rand_bytes = [0u8; 64];
@@ -44,20 +47,22 @@ fn cosignerd(n_man: usize) -> CosignerD {
         managers.push(ManagerConfig { xpub, noise_key });
     }
 
-    // Use a scratch directory at the root of the repo
-    let mut data_dir = PathBuf::from(file!())
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    data_dir.push("scratch_datadir");
+    // Use a scratch directory in /tmp
+    let data_dir = unsafe {
+        let template = String::from("cosignerd-XXXXXX").into_bytes();
+        let mut template = std::mem::ManuallyDrop::new(template);
+        let template_ptr = template.as_mut_ptr() as *mut i8;
+        libc::mkdtemp(template_ptr);
+        let datadir_str =
+            String::from_raw_parts(template_ptr as *mut u8, template.len(), template.capacity());
+        assert!(!datadir_str.contains("XXXXXX"), "mkdtemp failed");
+        datadir_str
+    };
+    let data_dir: PathBuf = ["/tmp", &data_dir].iter().collect();
     if data_dir.as_path().exists() {
         fs::remove_dir_all(&data_dir).expect("Removing former scratch datadir");
     }
-    fs::create_dir(&data_dir).expect("Creating scratch datadir");
+    fs::create_dir(&data_dir).expect("Creating scratch datadir in /tmp");
     let listen = SocketAddr::from_str("127.0.0.1:8383").unwrap();
 
     let noise_privkey = sodiumoxide::crypto::box_::gen_keypair().1;
@@ -153,10 +158,8 @@ impl CosignerTestBuilder {
 
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     #[test]
-    #[serial]
     fn test_builder() {
         let test_framework = CosignerTestBuilder::new(5);
         test_framework.generate_spend_tx(&[

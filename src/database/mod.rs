@@ -189,11 +189,9 @@ pub fn setup_db(db_path: &PathBuf) -> Result<(), DatabaseError> {
 mod test {
     use super::*;
     use crate::tests::builder::CosignerTestBuilder;
-    use serial_test::serial;
     use std::str::FromStr;
 
     #[test]
-    #[serial]
     fn db_creation_sanity() {
         let test_framework = CosignerTestBuilder::new(3);
         let db_path = &test_framework.cosignerd.db_file();
@@ -216,7 +214,6 @@ mod test {
     }
 
     #[test]
-    #[serial]
     fn signed_outpoints_insertion_sanity() {
         let test_framework = CosignerTestBuilder::new(7);
 

@@ -95,10 +95,7 @@ mod test {
     use revault_tx::{bitcoin::OutPoint, transactions::RevaultTransaction};
     use std::str::FromStr;
 
-    use serial_test::serial;
-
     #[test]
-    #[serial]
     fn sign_message_processing_sanity_check() {
         let test_framework = CosignerTestBuilder::new(3);
 

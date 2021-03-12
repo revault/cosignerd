@@ -1,6 +1,6 @@
 name: CI
 
-on: [push, pull_request]
+on: [pull_request]
 
 jobs:
   unittesting:
@@ -30,6 +30,20 @@ jobs:
         env:
           RUSTFLAGS: "-C link-dead-code"
         run: cargo test --verbose --color always --all-features
+
+  fuzztesting:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      - name: Install Rust nightly toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          profile: minimal
+      - name: Run fuzz testing script
+        run: sudo apt install build-essential binutils-dev libunwind-dev libblocksruntime-dev liblzma-dev && cargo install --force honggfuzz && cd fuzz && git clone https://github.com/revault/cosignerd_fuzz_corpus && HFUZZ_RUN_ARGS="--exit_upon_crash --iterations 10000 -v --timeout 2 --input cosignerd_fuzz_corpus" cargo hfuzz run process_sign_message && cd ..
 
   rustfmt_check:
     runs-on: ubuntu-latest

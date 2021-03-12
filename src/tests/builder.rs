@@ -48,8 +48,8 @@ fn cosignerd(n_man: usize) -> CosignerD {
     }
 
     // Use a scratch directory in /tmp
-    let data_dir = unsafe {
-        let template = String::from("cosignerd-XXXXXX").into_bytes();
+    let data_dir_str = unsafe {
+        let template = String::from("/tmp/cosignerd-XXXXXX").into_bytes();
         let mut template = std::mem::ManuallyDrop::new(template);
         let template_ptr = template.as_mut_ptr() as *mut i8;
         libc::mkdtemp(template_ptr);
@@ -58,11 +58,7 @@ fn cosignerd(n_man: usize) -> CosignerD {
         assert!(!datadir_str.contains("XXXXXX"), "mkdtemp failed");
         datadir_str
     };
-    let data_dir: PathBuf = ["/tmp", &data_dir].iter().collect();
-    if data_dir.as_path().exists() {
-        fs::remove_dir_all(&data_dir).expect("Removing former scratch datadir");
-    }
-    fs::create_dir(&data_dir).expect("Creating scratch datadir in /tmp");
+    let data_dir = PathBuf::from_str(&data_dir_str).unwrap();
     let listen = SocketAddr::from_str("127.0.0.1:8383").unwrap();
 
     let noise_privkey = sodiumoxide::crypto::box_::gen_keypair().1;
@@ -156,6 +152,19 @@ impl CosignerTestBuilder {
     }
 }
 
+impl Drop for CosignerTestBuilder {
+    fn drop(&mut self) {
+        fs::remove_dir_all(&self.cosignerd.data_dir).unwrap_or_else(|e| {
+            eprintln!(
+                "Error removing datadir at '{:?}': '{}'",
+                self.cosignerd.data_dir, e
+            );
+            std::process::exit(1);
+        });
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

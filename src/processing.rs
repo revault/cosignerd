@@ -42,6 +42,10 @@ pub fn process_sign_message(
     let db_path = cosignerd.db_file();
     let mut spend_tx = sign_msg.tx;
 
+    if spend_tx.is_finalized() {
+        return Ok(null_signature());
+    }
+
     // If any of the inputs was already signed, return null
     for txin in spend_tx.inner_tx().global.unsigned_tx.input.iter() {
         if db_signed_outpoint(&db_path, &txin.previous_output)

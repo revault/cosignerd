@@ -7,8 +7,9 @@ CREATE TABLE db_params (
 );
 
 CREATE TABLE signed_outpoints (
-    txid BLOB UNIQUE NOT NULL,
-    vout INTEGER NOT NULL
+    txid BLOB NOT NULL,
+    vout INTEGER NOT NULL,
+    UNIQUE(txid, vout)
 );
 
 ";

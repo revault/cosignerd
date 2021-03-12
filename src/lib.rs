@@ -10,5 +10,8 @@ pub mod database;
 /// Protocol message processing, we only have to handle a single message.
 pub mod processing;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzztesting"))]
 pub mod tests;
+
+#[cfg(feature = "fuzztesting")]
+pub use {revault_net, revault_tx, serde, serde_json};

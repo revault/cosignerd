@@ -164,6 +164,7 @@ impl Drop for CosignerTestBuilder {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

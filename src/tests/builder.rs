@@ -18,7 +18,7 @@ use revault_tx::{
     txouts::{ExternalTxOut, SpendTxOut, UnvaultTxOut},
 };
 
-use std::{net::SocketAddr, path::PathBuf, str::FromStr};
+use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr};
 
 use libc;
 
@@ -149,6 +149,18 @@ impl CosignerTestBuilder {
             true,
         )
         .expect("Creating spend transaction")
+    }
+}
+
+impl Drop for CosignerTestBuilder {
+    fn drop(&mut self) {
+        fs::remove_dir_all(&self.cosignerd.data_dir).unwrap_or_else(|e| {
+            eprintln!(
+                "Error removing datadir at '{:?}': '{}'",
+                self.cosignerd.data_dir, e
+            );
+            std::process::exit(1);
+        });
     }
 }
 

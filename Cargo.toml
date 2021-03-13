@@ -5,7 +5,6 @@ authors = ["JSwambo <jake.t.swambo@hotmail.co.uk>", "Antoine Poinsot <darosior@p
 edition = "2018"
 
 [dependencies]
-dirs = "3.0"
 daemonize-simple = "0.1"
 
 # TOML for the config

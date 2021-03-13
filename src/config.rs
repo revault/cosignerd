@@ -9,7 +9,7 @@ use revault_tx::{
     miniscript::descriptor::{DescriptorPublicKey, DescriptorXKey},
 };
 use serde::{de, Deserialize, Deserializer};
-use std::{net::SocketAddr, path::PathBuf, str::FromStr, vec::Vec};
+use std::{env, net::SocketAddr, path::PathBuf, str::FromStr, vec::Vec};
 
 fn deserialize_noisepubkey<'de, D>(deserializer: D) -> Result<NoisePubkey, D::Error>
 where
@@ -95,7 +95,8 @@ impl std::error::Error for ConfigError {}
 
 /// Get the absolute path to the our configuration folder, it's `~/.cosignerd`.
 pub fn datadir_path() -> Result<PathBuf, ConfigError> {
-    dirs::home_dir()
+    env::var_os("HOME")
+        .map(PathBuf::from)
         .map(|mut path| {
             path.push(".cosignerd");
             path

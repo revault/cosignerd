@@ -10,6 +10,9 @@ pub mod database;
 /// Protocol message processing, we only have to handle a single message.
 pub mod processing;
 
+/// Unix daemon creation routine
+pub mod daemonize;
+
 #[cfg(any(test, feature = "fuzztesting"))]
 pub mod tests;
 

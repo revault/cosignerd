@@ -52,7 +52,7 @@ fn cosignerd(n_man: usize) -> CosignerD {
         let template = String::from("/tmp/cosignerd-XXXXXX").into_bytes();
         let mut template = std::mem::ManuallyDrop::new(template);
         let template_ptr = template.as_mut_ptr() as *mut i8;
-        libc::mkdtemp(template_ptr);
+        while libc::mkdtemp(template_ptr) == std::ptr::null_mut() {}
         let datadir_str =
             String::from_raw_parts(template_ptr as *mut u8, template.len(), template.capacity());
         assert!(!datadir_str.contains("XXXXXX"), "mkdtemp failed");

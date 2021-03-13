@@ -5,9 +5,7 @@ authors = ["JSwambo <jake.t.swambo@hotmail.co.uk>", "Antoine Poinsot <darosior@p
 edition = "2018"
 
 [dependencies]
-daemonize-simple = "0.1"
-
-# TOML for the config
+# For the configuration file
 toml = "0.5"
 
 # For the messages
@@ -19,19 +17,20 @@ log = "0.4"
 fern = "0.5"
 chrono = "0.4"
 
+# Used for daemonization
+libc = "0.2"
+
 rusqlite = { version = "0.24.2", features = ["bundled"] }
 
-# Revault
+# Revault-specific libraries
 revault_net = { git = "https://github.com/revault/revault_net" }
 revault_tx = { version = "0.1", features = ["use-serde"] }
 
 # For fuzz testing
-libc = { version = "0.2", optional = true }
 bitcoin = {version = "0.25.2", features = ["rand"], optional = true}
 
 [features]
-fuzztesting = ["libc", "bitcoin"]
+fuzztesting = ["bitcoin"]
 
 [dev-dependencies]
-libc = "0.2"
 bitcoin = {version = "0.25.2", features = ["rand"]}

@@ -1,5 +1,6 @@
-use cosignerd::{config::Config, cosignerd::CosignerD, processing::process_sign_message};
-use daemonize_simple::Daemonize;
+use cosignerd::{
+    config::Config, cosignerd::CosignerD, daemonize::daemonize, processing::process_sign_message,
+};
 use revault_net::{message::cosigner::SignRequest, noise::PublicKey as NoisePubkey};
 use std::{env, net::TcpListener, path::PathBuf, process};
 
@@ -144,13 +145,14 @@ fn main() {
         process::exit(1);
     });
 
-    // run cosignerd as daemon
-    let mut daemon = Daemonize::default();
-    daemon.pid_file = Some(cosignerd.pid_file());
-    daemon.doit().unwrap_or_else(|e| {
-        eprintln!("Error daemonizing: {}", e);
-        process::exit(1);
-    });
+    unsafe {
+        daemonize(&cosignerd.data_dir, &cosignerd.pid_file()).unwrap_or_else(|e| {
+            eprintln!("Error daemonizing: {}", e);
+            // Duplicated as the error could happen after we fork and set stderr to /dev/null
+            log::error!("Error daemonizing: {}", e);
+            process::exit(1);
+        });
+    }
     log::info!("Started cosignerd daemon.");
 
     daemon_main(cosignerd);

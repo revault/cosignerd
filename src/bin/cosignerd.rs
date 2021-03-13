@@ -187,13 +187,15 @@ fn main() {
         process::exit(1);
     });
 
-    unsafe {
-        daemonize(&config.data_dir, &config.pid_file()).unwrap_or_else(|e| {
-            eprintln!("Error daemonizing: {}", e);
-            // Duplicated as the error could happen after we fork and set stderr to /dev/null
-            log::error!("Error daemonizing: {}", e);
-            process::exit(1);
-        });
+    if config.daemon {
+        unsafe {
+            daemonize(&config.data_dir, &config.pid_file()).unwrap_or_else(|e| {
+                eprintln!("Error daemonizing: {}", e);
+                // Duplicated as the error could happen after we fork and set stderr to /dev/null
+                log::error!("Error daemonizing: {}", e);
+                process::exit(1);
+            });
+        }
     }
     log::info!("Started cosignerd daemon.");
 

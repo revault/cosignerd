@@ -56,6 +56,10 @@ fn loglevel_default() -> log::LevelFilter {
     log::LevelFilter::Info
 }
 
+fn daemon_default() -> bool {
+    false
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ManagerConfig {
     #[serde(deserialize_with = "deserialize_xpub")]
@@ -89,7 +93,8 @@ pub struct Config {
     #[serde(default = "listen_default")]
     pub listen: SocketAddr,
     /// Whether to daemonize the process
-    pub daemon: Option<bool>,
+    #[serde(default = "daemon_default")]
+    pub daemon: bool,
     /// What messages to log
     #[serde(
         deserialize_with = "deserialize_loglevel",

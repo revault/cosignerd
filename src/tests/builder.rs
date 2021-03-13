@@ -81,7 +81,7 @@ impl CosignerTestBuilder {
             data_dir,
             listen,
             log_level: log::LevelFilter::Trace,
-            daemon: Some(false),
+            daemon: false,
         };
 
         let noise_privkey = sodiumoxide::crypto::box_::gen_keypair().1;

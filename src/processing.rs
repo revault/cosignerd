@@ -1,5 +1,5 @@
 use crate::{
-    cosignerd::CosignerD,
+    config::Config,
     database::{db_insert_signed_outpoint, db_signed_outpoint, DatabaseError},
 };
 
@@ -36,10 +36,11 @@ fn null_signature() -> SignResponse {
 /// oracle it signs any incoming Spend transaction if all of its outpoints were not signed already.
 /// See https://github.com/revault/practical-revault/blob/master/messages.md#sign
 pub fn process_sign_message(
-    cosignerd: &CosignerD,
+    config: &Config,
     sign_msg: SignRequest,
+    bitcoin_privkey: &secp256k1::SecretKey,
 ) -> Result<SignResponse, SignProcessingError> {
-    let db_path = cosignerd.db_file();
+    let db_path = config.db_file();
     let mut spend_tx = sign_msg.tx;
 
     if spend_tx.is_finalized() {
@@ -62,7 +63,7 @@ pub fn process_sign_message(
     let secp = secp256k1::Secp256k1::signing_only();
     let our_pubkey = BitcoinPubkey {
         compressed: true,
-        key: secp256k1::PublicKey::from_secret_key(&secp, &cosignerd.bitcoin_privkey),
+        key: secp256k1::PublicKey::from_secret_key(&secp, bitcoin_privkey),
     };
     let mut psbtins = spend_tx.inner_tx_mut().inputs.clone(); // borrow checker forces a clone..
     for (i, psbtin) in psbtins.iter_mut().enumerate() {
@@ -72,7 +73,7 @@ pub fn process_sign_message(
             .map_err(SignProcessingError::InsanePsbtMissingInput)?;
         let sighash = secp256k1::Message::from_slice(&sighash).expect("Sighash is 32 bytes");
         let signature = secp
-            .sign(&sighash, &cosignerd.bitcoin_privkey)
+            .sign(&sighash, bitcoin_privkey)
             .serialize_der()
             .to_vec();
         assert!(
@@ -128,7 +129,12 @@ mod test {
             0
         );
         let sign_a = SignRequest { tx };
-        let SignResponse { tx } = process_sign_message(&test_framework.cosignerd, sign_a).unwrap();
+        let SignResponse { tx } = process_sign_message(
+            &test_framework.config,
+            sign_a,
+            &test_framework.bitcoin_privkey,
+        )
+        .unwrap();
         assert_eq!(
             tx.unwrap()
                 .inner_tx()
@@ -151,7 +157,12 @@ mod test {
             .unwrap(),
         ]);
         let sign_a = SignRequest { tx };
-        let SignResponse { tx } = process_sign_message(&test_framework.cosignerd, sign_a).unwrap();
+        let SignResponse { tx } = process_sign_message(
+            &test_framework.config,
+            sign_a,
+            &test_framework.bitcoin_privkey,
+        )
+        .unwrap();
         assert!(tx.is_none(), "It contains a duplicated outpoint");
     }
 }

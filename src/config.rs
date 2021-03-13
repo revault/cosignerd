@@ -8,8 +8,10 @@ use revault_tx::{
     bitcoin::{hashes::hex::FromHex, util::bip32},
     miniscript::descriptor::{DescriptorPublicKey, DescriptorXKey},
 };
+
+use std::{env, net::SocketAddr, path::PathBuf, process, str::FromStr, vec::Vec};
+
 use serde::{de, Deserialize, Deserializer};
-use std::{net::SocketAddr, path::PathBuf, str::FromStr, vec::Vec};
 
 fn deserialize_noisepubkey<'de, D>(deserializer: D) -> Result<NoisePubkey, D::Error>
 where
@@ -54,6 +56,10 @@ fn loglevel_default() -> log::LevelFilter {
     log::LevelFilter::Info
 }
 
+fn daemon_default() -> bool {
+    false
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ManagerConfig {
     #[serde(deserialize_with = "deserialize_xpub")]
@@ -62,18 +68,33 @@ pub struct ManagerConfig {
     pub noise_key: NoisePubkey,
 }
 
+fn default_datadir_path() -> PathBuf {
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|mut path| {
+            path.push(".cosignerd");
+            path
+        })
+        .unwrap_or_else(|| {
+            eprintln!("Could not locate our default data directory, no $HOME set?");
+            process::exit(1);
+        })
+}
+
 /// Static informations we require to operate
 #[derive(Debug, Deserialize)]
 pub struct Config {
     /// The managers', for which we need the xpubs and Noise static pubkeys
     pub managers: Vec<ManagerConfig>,
     /// An optional custom data directory
-    pub data_dir: Option<PathBuf>,
+    #[serde(default = "default_datadir_path")]
+    pub data_dir: PathBuf,
     /// What interface to listen on
     #[serde(default = "listen_default")]
     pub listen: SocketAddr,
     /// Whether to daemonize the process
-    pub daemon: Option<bool>,
+    #[serde(default = "daemon_default")]
+    pub daemon: bool,
     /// What messages to log
     #[serde(
         deserialize_with = "deserialize_loglevel",
@@ -82,33 +103,28 @@ pub struct Config {
     pub log_level: log::LevelFilter,
 }
 
-#[derive(PartialEq, Eq, Debug)]
-pub struct ConfigError(pub String);
+#[derive(Debug)]
+pub enum ConfigError {
+    ReadingConfigFile(std::io::Error),
+    ParsingConfigFile(toml::de::Error),
+}
 
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Configuration error: {}", self.0)
+        match self {
+            Self::ReadingConfigFile(e) => write!(f, "Error when reading config file: '{}'", e),
+            Self::ParsingConfigFile(e) => write!(f, "Error when reading config file: '{}'", e),
+        }
     }
 }
 
 impl std::error::Error for ConfigError {}
 
-/// Get the absolute path to the our configuration folder, it's `~/.cosignerd`.
-pub fn datadir_path() -> Result<PathBuf, ConfigError> {
-    dirs::home_dir()
-        .map(|mut path| {
-            path.push(".cosignerd");
-            path
-        })
-        .ok_or_else(|| ConfigError("Could not locate our data directory.".to_owned()))
-}
-
-/// Get the path to our config file, inside the data directory
-pub fn config_file_path() -> Result<PathBuf, ConfigError> {
-    datadir_path().map(|mut path| {
-        path.push("config.toml");
-        path
-    })
+/// Get the default path to our config file, inside the data directory
+pub fn default_config_file_path() -> PathBuf {
+    let mut path = default_datadir_path();
+    path.push("config.toml");
+    path
 }
 
 impl Config {
@@ -118,22 +134,42 @@ impl Config {
     /// file. We don't allow to set them via the command line or environment variables to avoid a
     /// futile duplication.
     pub fn from_file(custom_path: Option<PathBuf>) -> Result<Config, ConfigError> {
-        let config_file = custom_path.unwrap_or(config_file_path()?);
+        let config_file = custom_path.unwrap_or_else(|| default_config_file_path());
 
         let config = std::fs::read(&config_file)
-            .map_err(|e| ConfigError(format!("Reading configuration file: {}", e)))
+            .map_err(ConfigError::ReadingConfigFile)
             .and_then(|file_content| {
-                toml::from_slice::<Config>(&file_content)
-                    .map_err(|e| ConfigError(format!("Parsing configuration file: {}", e)))
+                toml::from_slice::<Config>(&file_content).map_err(ConfigError::ParsingConfigFile)
             })?;
 
         Ok(config)
+    }
+
+    fn file_from_datadir(&self, file_name: &str) -> PathBuf {
+        let data_dir_str = self
+            .data_dir
+            .to_str()
+            .expect("Impossible: the datadir path is valid unicode");
+
+        [data_dir_str, file_name].iter().collect()
+    }
+
+    pub fn log_file(&self) -> PathBuf {
+        self.file_from_datadir("log")
+    }
+
+    pub fn pid_file(&self) -> PathBuf {
+        self.file_from_datadir("cosignerd.pid")
+    }
+
+    pub fn db_file(&self) -> PathBuf {
+        self.file_from_datadir("cosignerd.sqlite3")
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{config_file_path, Config};
+    use super::{default_config_file_path, Config};
 
     // Test the format of the configuration file
     #[test]
@@ -167,7 +203,7 @@ mod tests {
 
     #[test]
     fn config_directory() {
-        let filepath = config_file_path().expect("Getting config file path");
+        let filepath = default_config_file_path();
 
         assert!(filepath.as_path().starts_with("/home/"));
         assert!(filepath.as_path().ends_with(".cosignerd/config.toml"));

@@ -1,5 +1,5 @@
-use crate::{config::ManagerConfig, cosignerd::CosignerD, database::setup_db};
-use revault_net::sodiumoxide;
+use crate::{config::Config, config::ManagerConfig, database::setup_db};
+use revault_net::{noise::SecretKey as NoisePrivkey, sodiumoxide};
 use revault_tx::{
     miniscript::{
         bitcoin::{
@@ -31,61 +31,67 @@ fn random_privkey(rng: &mut SmallRng) -> bip32::ExtendedPrivKey {
         .unwrap_or_else(|_| random_privkey(rng))
 }
 
-fn cosignerd(n_man: usize) -> CosignerD {
-    let mut rng = SmallRng::from_entropy();
-    let secp = secp256k1::Secp256k1::new();
-
-    let mut managers = Vec::with_capacity(n_man);
-    for _ in 0..n_man {
-        let xpub = DescriptorPublicKey::XPub(DescriptorXKey {
-            origin: None,
-            xkey: bip32::ExtendedPubKey::from_private(&secp, &random_privkey(&mut rng)),
-            derivation_path: bip32::DerivationPath::from(vec![]),
-            is_wildcard: true,
-        });
-        let noise_key = sodiumoxide::crypto::box_::gen_keypair().0;
-        managers.push(ManagerConfig { xpub, noise_key });
-    }
-
-    // Use a scratch directory in /tmp
-    let data_dir_str = unsafe {
-        let template = String::from("/tmp/cosignerd-XXXXXX").into_bytes();
-        let mut template = std::mem::ManuallyDrop::new(template);
-        let template_ptr = template.as_mut_ptr() as *mut i8;
-        libc::mkdtemp(template_ptr);
-        let datadir_str =
-            String::from_raw_parts(template_ptr as *mut u8, template.len(), template.capacity());
-        assert!(!datadir_str.contains("XXXXXX"), "mkdtemp failed");
-        datadir_str
-    };
-    let data_dir = PathBuf::from_str(&data_dir_str).unwrap();
-    let listen = SocketAddr::from_str("127.0.0.1:8383").unwrap();
-
-    let noise_privkey = sodiumoxide::crypto::box_::gen_keypair().1;
-    let bitcoin_privkey = secp256k1::SecretKey::new(&mut rng);
-
-    let mut db_path = data_dir.clone();
-    db_path.push("cosignerd.sqlite3");
-    setup_db(&db_path).expect("Setting up db");
-
-    CosignerD {
-        managers,
-        noise_privkey,
-        bitcoin_privkey,
-        data_dir,
-        listen,
-    }
-}
-
 #[derive(Debug)]
 pub struct CosignerTestBuilder {
-    pub cosignerd: CosignerD,
+    pub config: Config,
+    pub noise_privkey: NoisePrivkey,
+    pub bitcoin_privkey: secp256k1::SecretKey,
 }
 
 impl CosignerTestBuilder {
     pub fn new(n_man: usize) -> Self {
-        let cosignerd = cosignerd(n_man);
-        CosignerTestBuilder { cosignerd }
+        let mut rng = SmallRng::from_entropy();
+        let secp = secp256k1::Secp256k1::new();
+
+        let mut managers = Vec::with_capacity(n_man);
+        for _ in 0..n_man {
+            let xpub = DescriptorPublicKey::XPub(DescriptorXKey {
+                origin: None,
+                xkey: bip32::ExtendedPubKey::from_private(&secp, &random_privkey(&mut rng)),
+                derivation_path: bip32::DerivationPath::from(vec![]),
+                is_wildcard: true,
+            });
+            let noise_key = sodiumoxide::crypto::box_::gen_keypair().0;
+            managers.push(ManagerConfig { xpub, noise_key });
+        }
+
+        // Use a scratch directory in /tmp
+        let data_dir_str = unsafe {
+            let template = String::from("/tmp/cosignerd-XXXXXX").into_bytes();
+            let mut template = std::mem::ManuallyDrop::new(template);
+            let template_ptr = template.as_mut_ptr() as *mut i8;
+            while libc::mkdtemp(template_ptr) == std::ptr::null_mut() {}
+            let datadir_str = String::from_raw_parts(
+                template_ptr as *mut u8,
+                template.len(),
+                template.capacity(),
+            );
+            assert!(!datadir_str.contains("XXXXXX"), "mkdtemp failed");
+            datadir_str
+        };
+        let data_dir = PathBuf::from_str(&data_dir_str).unwrap();
+        let listen = SocketAddr::from_str("127.0.0.1:8383").unwrap();
+
+        let mut db_path = data_dir.clone();
+        db_path.push("cosignerd.sqlite3");
+        setup_db(&db_path).expect("Setting up db");
+
+        let config = Config {
+            managers,
+            data_dir,
+            listen,
+            log_level: log::LevelFilter::Trace,
+            daemon: false,
+        };
+
+        let noise_privkey = sodiumoxide::crypto::box_::gen_keypair().1;
+        let bitcoin_privkey = secp256k1::SecretKey::new(&mut rng);
+
+        CosignerTestBuilder {
+            config,
+            noise_privkey,
+            bitcoin_privkey,
+        }
     }
 
     pub fn generate_spend_tx(&self, outpoints: &[OutPoint]) -> SpendTransaction {
@@ -112,7 +118,7 @@ impl CosignerTestBuilder {
             }));
         }
         let managers_keys: Vec<DescriptorPublicKey> = self
-            .cosignerd
+            .config
             .managers
             .clone()
             .iter()
@@ -154,10 +160,10 @@ impl CosignerTestBuilder {
 
 impl Drop for CosignerTestBuilder {
     fn drop(&mut self) {
-        fs::remove_dir_all(&self.cosignerd.data_dir).unwrap_or_else(|e| {
+        fs::remove_dir_all(&self.config.data_dir).unwrap_or_else(|e| {
             eprintln!(
                 "Error removing datadir at '{:?}': '{}'",
-                self.cosignerd.data_dir, e
+                self.config.data_dir, e
             );
             std::process::exit(1);
         });

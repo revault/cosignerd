@@ -7,8 +7,9 @@ use cosignerd::{
 use honggfuzz::fuzz;
 
 fn main() {
-    let state = &cosignerd::tests::builder::CosignerTestBuilder::new(10).cosignerd;
-    let db_path = state.db_file();
+    let builder = cosignerd::tests::builder::CosignerTestBuilder::new(10);
+    let db_path = builder.config.db_file();
+
     loop {
         fuzz!(|data: &[u8]| {
             if let Ok(tx) = SpendTransaction::from_psbt_serialized(data) {
@@ -20,8 +21,12 @@ fn main() {
                     .collect();
 
                 let msg = SignRequest { tx };
-                let resp = cosignerd::processing::process_sign_message(state, msg)
-                    .expect("We should never crash while processing a message");
+                let resp = cosignerd::processing::process_sign_message(
+                    &builder.config,
+                    msg,
+                    &builder.bitcoin_privkey,
+                )
+                .expect("We should never crash while processing a message");
 
                 if let Some(resp_tx) = resp.tx {
                     let psbt = resp_tx.inner_tx();

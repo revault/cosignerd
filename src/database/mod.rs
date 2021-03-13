@@ -194,7 +194,7 @@ mod test {
     #[test]
     fn db_creation_sanity() {
         let test_framework = CosignerTestBuilder::new(3);
-        let db_path = &test_framework.cosignerd.db_file();
+        let db_path = &test_framework.config.db_file();
 
         // We can't create it twice
         create_db(db_path).unwrap_err();
@@ -217,7 +217,7 @@ mod test {
     fn signed_outpoints_insertion_sanity() {
         let test_framework = CosignerTestBuilder::new(7);
 
-        let db_path = test_framework.cosignerd.db_file();
+        let db_path = test_framework.config.db_file();
         let outpoint = OutPoint::from_str(
             "e69a8de68c69b2f19249437004b65e82e2615c61c8d852fd36965c032a117d00:120",
         )

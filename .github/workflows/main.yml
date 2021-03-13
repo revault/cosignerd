@@ -1,0 +1,57 @@
+name: CI
+
+on: [pull_request]
+
+jobs:
+  unittesting:
+    strategy:
+      matrix:
+        # We don't have a MSRV (yet?)
+        toolchain:
+          - stable
+          - nightly
+        os:
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      - name: Install Rust ${{ matrix.toolchain }} toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          override: true
+          profile: minimal
+      - name: Build on Rust ${{ matrix.toolchain }}
+        env:
+          RUSTFLAGS: "-C link-dead-code"
+        run: cargo build --verbose --color always
+      - name: Test on Rust ${{ matrix.toolchain }}
+        env:
+          RUSTFLAGS: "-C link-dead-code"
+        run: cargo test --verbose --color always --all-features
+
+  fuzztesting:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      - name: Install Rust nightly toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          profile: minimal
+      - name: Run fuzz testing script
+        run: sudo apt install build-essential binutils-dev libunwind-dev libblocksruntime-dev liblzma-dev && cargo install --force honggfuzz && cd fuzz && git clone https://github.com/revault/cosignerd_fuzz_corpus && HFUZZ_RUN_ARGS="--exit_upon_crash --iterations 10000 -v --timeout 2 --input cosignerd_fuzz_corpus" cargo hfuzz run process_sign_message && cd ..
+
+  rustfmt_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            components: rustfmt
+            override: true
+      - run: cargo fmt -- --check

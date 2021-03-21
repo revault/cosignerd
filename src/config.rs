@@ -4,10 +4,7 @@
 //! for each manager (for signature verification of Spend Transactions).
 
 use revault_net::noise::PublicKey as NoisePubkey;
-use revault_tx::{
-    bitcoin::{hashes::hex::FromHex, util::bip32},
-    miniscript::descriptor::{DescriptorPublicKey, DescriptorXKey},
-};
+use revault_tx::bitcoin::hashes::hex::FromHex;
 
 use std::{env, net::SocketAddr, path::PathBuf, process, str::FromStr, vec::Vec};
 
@@ -21,23 +18,6 @@ where
     FromHex::from_hex(&data)
         .map_err(|e| de::Error::custom(e))
         .map(NoisePubkey)
-}
-
-fn xpub_to_desc_xpub(xkey: bip32::ExtendedPubKey) -> DescriptorPublicKey {
-    DescriptorPublicKey::XPub(DescriptorXKey {
-        origin: None,
-        xkey,
-        derivation_path: bip32::DerivationPath::from(vec![]),
-        is_wildcard: true,
-    })
-}
-
-fn deserialize_xpub<'de, D>(deserializer: D) -> Result<DescriptorPublicKey, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let xpub = bip32::ExtendedPubKey::deserialize(deserializer)?;
-    Ok(xpub_to_desc_xpub(xpub))
 }
 
 fn deserialize_loglevel<'de, D>(deserializer: D) -> Result<log::LevelFilter, D::Error>
@@ -62,8 +42,6 @@ fn daemon_default() -> bool {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ManagerConfig {
-    #[serde(deserialize_with = "deserialize_xpub")]
-    pub xpub: DescriptorPublicKey,
     #[serde(deserialize_with = "deserialize_noisepubkey")]
     pub noise_key: NoisePubkey,
 }
@@ -84,7 +62,7 @@ fn default_datadir_path() -> PathBuf {
 /// Static informations we require to operate
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    /// The managers', for which we need the xpubs and Noise static pubkeys
+    /// The managers', for which we need the Noise static pubkeys
     pub managers: Vec<ManagerConfig>,
     /// An optional custom data directory
     #[serde(default = "default_datadir_path")]

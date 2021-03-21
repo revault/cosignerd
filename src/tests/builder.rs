@@ -36,6 +36,7 @@ pub struct CosignerTestBuilder {
     pub config: Config,
     pub noise_privkey: NoisePrivkey,
     pub bitcoin_privkey: secp256k1::SecretKey,
+    pub managers_keys: Vec<DescriptorPublicKey>,
 }
 
 impl CosignerTestBuilder {
@@ -44,6 +45,7 @@ impl CosignerTestBuilder {
         let secp = secp256k1::Secp256k1::new();
 
         let mut managers = Vec::with_capacity(n_man);
+        let mut managers_keys = Vec::with_capacity(n_man);
         for _ in 0..n_man {
             let xpub = DescriptorPublicKey::XPub(DescriptorXKey {
                 origin: None,
@@ -51,8 +53,10 @@ impl CosignerTestBuilder {
                 derivation_path: bip32::DerivationPath::from(vec![]),
                 is_wildcard: true,
             });
+            managers_keys.push(xpub);
+
             let noise_key = sodiumoxide::crypto::box_::gen_keypair().0;
-            managers.push(ManagerConfig { xpub, noise_key });
+            managers.push(ManagerConfig { noise_key });
         }
 
         // Use a scratch directory in /tmp
@@ -91,6 +95,7 @@ impl CosignerTestBuilder {
             config,
             noise_privkey,
             bitcoin_privkey,
+            managers_keys,
         }
     }
 
@@ -117,22 +122,16 @@ impl CosignerTestBuilder {
                     .public_key,
             }));
         }
-        let managers_keys: Vec<DescriptorPublicKey> = self
-            .config
-            .managers
-            .clone()
-            .iter()
-            .map(|m| m.xpub.clone())
-            .collect();
         let unvault_descriptor = unvault_descriptor(
             stakeholders_keys,
-            managers_keys.clone(),
+            self.managers_keys.clone(),
             1,
             cosigners_keys,
             csv,
         )
         .expect("Unvault descriptor generation error");
-        let cpfp_descriptor = cpfp_descriptor(managers_keys).expect("CPFP desc generation error");
+        let cpfp_descriptor =
+            cpfp_descriptor(self.managers_keys.clone()).expect("CPFP desc generation error");
 
         let unvault_txins: Vec<UnvaultTxIn> = outpoints
             .iter()

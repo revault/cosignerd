@@ -56,7 +56,8 @@ pub fn process_sign_message(
             return Ok(null_signature());
         }
 
-        // FIXME: check each manager's signature
+        // NOTE: we initially decided to check each manager's signature here, and then we discarded
+        // it. This is still being discussed whether it's fine to drop this check...
     }
 
     // If we never signed it yet, append our signatures to the PSBT

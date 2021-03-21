@@ -26,12 +26,7 @@ fn parse_args(args: Vec<String>) -> Option<PathBuf> {
     Some(PathBuf::from(args[2].to_owned()))
 }
 
-// This creates the log file automagically if it doesn't exist, and logs on stdout
-// if None is given
-fn setup_logger(
-    log_file: Option<&str>,
-    log_level: log::LevelFilter,
-) -> Result<(), fern::InitError> {
+fn setup_logger(log_level: log::LevelFilter) -> Result<(), fern::InitError> {
     let dispatcher = fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -44,11 +39,7 @@ fn setup_logger(
         })
         .level(log_level);
 
-    if let Some(log_file) = log_file {
-        dispatcher.chain(fern::log_file(log_file)?).apply()?;
-    } else {
-        dispatcher.chain(std::io::stdout()).apply()?;
-    }
+    dispatcher.chain(std::io::stdout()).apply()?;
 
     Ok(())
 }
@@ -147,6 +138,10 @@ fn main() {
         process::exit(1);
     });
     let log_level = config.log_level;
+    setup_logger(log_level).unwrap_or_else(|e| {
+        eprintln!("Error setting up logger: {}", e);
+        process::exit(1);
+    });
 
     if !config.data_dir.as_path().exists() {
         create_datadir(&config.data_dir).unwrap_or_else(|e| {
@@ -180,21 +175,16 @@ fn main() {
         process::exit(1);
     });
 
-    let log_file = config.log_file();
-    let log_output = Some(log_file.to_str().expect("Valid unicode"));
-    setup_logger(log_output, log_level).unwrap_or_else(|e| {
-        eprintln!("Error setting up logger: {}", e);
-        process::exit(1);
-    });
-
     if config.daemon {
         unsafe {
-            daemonize(&config.data_dir, &config.pid_file()).unwrap_or_else(|e| {
-                eprintln!("Error daemonizing: {}", e);
-                // Duplicated as the error could happen after we fork and set stderr to /dev/null
-                log::error!("Error daemonizing: {}", e);
-                process::exit(1);
-            });
+            daemonize(&config.data_dir, &config.pid_file(), &config.log_file()).unwrap_or_else(
+                |e| {
+                    eprintln!("Error daemonizing: {}", e);
+                    // Duplicated as the error could happen after we fork and set stderr to /dev/null
+                    log::error!("Error daemonizing: {}", e);
+                    process::exit(1);
+                },
+            );
         }
     }
     log::info!("Started cosignerd daemon.");

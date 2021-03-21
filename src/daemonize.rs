@@ -8,7 +8,11 @@ use std::path::PathBuf;
 // This code was highly inspired from Frank Denis (@jedisct1) 'daemonize-simple' crate,
 // available at https://github.com/jedisct1/rust-daemonize-simple/blob/master/src/unix.rs .
 // MIT licensed according to https://github.com/jedisct1/rust-daemonize-simple/blob/master/Cargo.toml
-pub unsafe fn daemonize(chdir: &PathBuf, pid_file: &PathBuf) -> Result<(), &'static str> {
+pub unsafe fn daemonize(
+    chdir: &PathBuf,
+    pid_file: &PathBuf,
+    log_file: &PathBuf,
+) -> Result<(), &'static str> {
     match libc::fork() {
         -1 => return Err("fork() failed"),
         0 => {}
@@ -35,7 +39,7 @@ pub unsafe fn daemonize(chdir: &PathBuf, pid_file: &PathBuf) -> Result<(), &'sta
     let fd = OpenOptions::new()
         .create(true)
         .write(true)
-        .open("/dev/null")
+        .open(log_file)
         .map_err(|_| "Unable to open the stdout file")?;
     if libc::dup2(fd.as_raw_fd(), 1) == -1 {
         return Err("dup2(stdout) failed");
@@ -43,7 +47,7 @@ pub unsafe fn daemonize(chdir: &PathBuf, pid_file: &PathBuf) -> Result<(), &'sta
     let fd = OpenOptions::new()
         .create(true)
         .write(true)
-        .open("/dev/null")
+        .open(log_file)
         .map_err(|_| "Unable to open the stderr file")?;
     if libc::dup2(fd.as_raw_fd(), 2) == -1 {
         return Err("dup2(stderr) failed");

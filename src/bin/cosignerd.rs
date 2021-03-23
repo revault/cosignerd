@@ -8,8 +8,9 @@ use cosignerd::{
 use revault_net::{
     message::cosigner::SignRequest,
     noise::{PublicKey as NoisePubkey, SecretKey as NoisePrivkey},
+    sodiumoxide::crypto::scalarmult::curve25519,
 };
-use revault_tx::bitcoin::secp256k1;
+use revault_tx::bitcoin::{hashes::hex::ToHex, secp256k1};
 use std::{env, fs, net::TcpListener, os::unix::fs::DirBuilderExt, path::PathBuf, process};
 
 fn parse_args(args: Vec<String>) -> Option<PathBuf> {
@@ -60,13 +61,7 @@ fn daemon_main(
 
     // We expect a single connection once in a while, there is *no need* for complexity here so
     // just treat incoming connections sequentially.
-    for stream in listener.incoming() {
-        log::trace!("Got a new connection: '{:?}'", stream);
-        let stream = match stream {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        // This does the Noise KK handshake.
+    loop {
         let mut kk_stream = match revault_net::transport::KKTransport::accept(
             &listener,
             noise_privkey,
@@ -82,7 +77,7 @@ fn daemon_main(
         let buf = match kk_stream.read() {
             Ok(buf) => buf,
             Err(e) => {
-                log::error!("Error reading from stream '{:?}': '{}'", stream, e);
+                log::error!("Error reading from stream '{:?}': '{}'", kk_stream, e);
                 continue;
             }
         };
@@ -187,7 +182,12 @@ fn main() {
             );
         }
     }
-    log::info!("Started cosignerd daemon.");
+    log::info!(
+        "Started cosignerd daemon with Noise pubkey: {}",
+        NoisePubkey(curve25519::scalarmult_base(&curve25519::Scalar(noise_privkey.0)).0)
+            .0
+            .to_hex()
+    );
 
     daemon_main(config, &noise_privkey, &bitcoin_privkey);
 }

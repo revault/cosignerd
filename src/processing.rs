@@ -73,10 +73,11 @@ pub fn process_sign_message(
             .signature_hash_internal_input(i, SigHashType::All)
             .map_err(SignProcessingError::InsanePsbtMissingInput)?;
         let sighash = secp256k1::Message::from_slice(&sighash).expect("Sighash is 32 bytes");
-        let signature = secp
+        let mut signature = secp
             .sign(&sighash, bitcoin_privkey)
             .serialize_der()
             .to_vec();
+        signature.push(SigHashType::All as u8);
         assert!(
             psbtin.partial_sigs.insert(our_pubkey, signature).is_none(),
             "If there was a signature for our pubkey already and we didn't return \

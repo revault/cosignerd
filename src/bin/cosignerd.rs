@@ -61,13 +61,7 @@ fn daemon_main(
 
     // We expect a single connection once in a while, there is *no need* for complexity here so
     // just treat incoming connections sequentially.
-    for stream in listener.incoming() {
-        log::trace!("Got a new connection: '{:?}'", stream);
-        let stream = match stream {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        // This does the Noise KK handshake.
+    loop {
         let mut kk_stream = match revault_net::transport::KKTransport::accept(
             &listener,
             noise_privkey,

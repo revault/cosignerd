@@ -1,0 +1,15 @@
+daemon = false
+log_level = "trace"
+data_dir = "/path/to/your/data_dir"
+# If the cosigner and the managers are not in the same network, you'll need to bind on other interfaces than localhost
+listen = "127.0.0.1:20001"
+
+# This contains the manager noise keys. You'll need a [[managers]] section for each manager you have!
+
+[[managers]]
+# Replace this with the noise key of the manager given by revaultd
+noise_key = "b28cf2091bbbecf347d29420f884a936713e7b2e86fe4f6653d7e12356d26114"
+
+[[managers]]
+# Replace this with the noise key of the manager given by revaultd
+noise_key = "b28cf2091bbbecf347d29420f884a936713e7b2e86fe4f6653d7e12356d26114"

@@ -32,9 +32,9 @@ checksum = "2dabbe35f96fb9507f7330793dc490461b2962659ac5d427181e451a623751d1"
 
 [[package]]
 name = "bitcoin"
-version = "0.25.2"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aefc9be9f17185f4ebccae6575d342063f775924d57df0000edb1880c0fb7095"
+checksum = "1ec5f88a446d66e7474a3b8fa2e348320b574463fb78d799d90ba68f79f48e0e"
 dependencies = [
  "bech32",
  "bitcoin_hashes",
@@ -178,9 +178,9 @@ checksum = "dd25036021b0de88a0aff6b850051563c6516d0bf53f8638938edbb9de732736"
 
 [[package]]
 name = "libc"
-version = "0.2.88"
+version = "0.2.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03b07a082330a35e43f63177cc01689da34fbffa0105e1246cf0311472cac73a"
+checksum = "9385f66bf6105b241aa65a61cb923ef20efc665cb9f9bb50ac2f0c4b7f378d41"
 
 [[package]]
 name = "libsodium-sys"
@@ -221,12 +221,11 @@ checksum = "0ee1c47aaa256ecabcaea351eae4a9b01ef39ed810004e298d2511ed284b1525"
 
 [[package]]
 name = "miniscript"
-version = "4.0.3"
+version = "5.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74ff4ece4ff5498718a232e92d53273903609c739052f5edf2a1a42c59586348"
+checksum = "71f455be59a359d50370c4f587afbc5739c862e684c5afecae80ab93e7474b4e"
 dependencies = [
  "bitcoin",
- "serde",
 ]
 
 [[package]]
@@ -256,9 +255,9 @@ checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.24"
+version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e0704ee1a7e00d7bb417d0770ea303c1bccbabf0ef1667dae92b5967f5f8a71"
+checksum = "a152013215dca273577e18d2bf00fa862b89b24169fb78c4c95aeb07992c9cec"
 dependencies = [
  "unicode-xid",
 ]
@@ -396,8 +395,9 @@ dependencies = [
 [[package]]
 name = "revault_net"
 version = "0.0.1"
-source = "git+https://github.com/revault/revault_net#ae726a3008d90d05d26ba451e38b8ea4cf4d3e6d"
+source = "git+https://github.com/revault/revault_net#ce585011bd38b8f51806469332a1a3f953bf7ad9"
 dependencies = [
+ "bitcoin",
  "revault_tx",
  "serde",
  "snow",
@@ -406,9 +406,9 @@ dependencies = [
 
 [[package]]
 name = "revault_tx"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa5ded7990dcc8b935cacde788394d71de4a06eb1b4fec4828b715490b0797b7"
+checksum = "281109ba2c34a241b24e30e22225c4fd283a5dc69f86c33de9cc339abb870c38"
 dependencies = [
  "base64",
  "bitcoinconsensus",
@@ -448,9 +448,9 @@ checksum = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
 
 [[package]]
 name = "secp256k1"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6179428c22c73ac0fbb7b5579a56353ce78ba29759b3b8575183336ea74cdfb"
+checksum = "733b114f058f260c0af7591434eef4272ae1a8ec2751766d3cb89c6df8d5e450"
 dependencies = [
  "rand",
  "secp256k1-sys",
@@ -459,9 +459,9 @@ dependencies = [
 
 [[package]]
 name = "secp256k1-sys"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11553d210db090930f4432bea123b31f70bbf693ace14504ea2a35e796c28dd2"
+checksum = "67e4b6455ee49f5901c8985b88f98fb0a0e1d90a6661f5a03f4888bd987dad29"
 dependencies = [
  "cc",
 ]
@@ -483,18 +483,18 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "serde"
-version = "1.0.124"
+version = "1.0.125"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd761ff957cb2a45fbb9ab3da6512de9de55872866160b23c25f1a841e99d29f"
+checksum = "558dc50e1a5a5fa7112ca2ce4effcb321b0300c0d4ccf0776a9f60cd89031171"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.124"
+version = "1.0.125"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1800f7693e94e186f5e25a28291ae1570da908aff7d97a095dec1e56ff99069b"
+checksum = "b093b7a2bb58203b5da3056c05b4ec1fed827dcfdb37347a8841695263b3d06d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -550,9 +550,9 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 
 [[package]]
 name = "syn"
-version = "1.0.63"
+version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fd9bc7ccc2688b3344c2f48b9b546648b25ce0b20fc717ee7fa7981a8ca9717"
+checksum = "48fe99c6bd8b1cc636890bcc071842de909d902c81ac7dab53ba33c421ab8ffb"
 dependencies = [
  "proc-macro2",
  "quote",

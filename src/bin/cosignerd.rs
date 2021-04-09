@@ -6,6 +6,7 @@ use cosignerd::{
     processing::process_sign_message,
 };
 use revault_net::{
+    bitcoin::PrivateKey,
     message::cosigner::SignRequest,
     noise::{PublicKey as NoisePubkey, SecretKey as NoisePrivkey},
     sodiumoxide::crypto::scalarmult::curve25519,
@@ -182,11 +183,18 @@ fn main() {
             );
         }
     }
+    let noise_pubkey =
+        NoisePubkey(curve25519::scalarmult_base(&curve25519::Scalar(noise_privkey.0)).0);
+    let bit_pubkey = PrivateKey {
+        compressed: true,
+        network: revault_tx::bitcoin::Network::Bitcoin,
+        key: bitcoin_privkey,
+    }
+    .public_key(&secp256k1::Secp256k1::signing_only());
     log::info!(
-        "Started cosignerd daemon with Noise pubkey: {}",
-        NoisePubkey(curve25519::scalarmult_base(&curve25519::Scalar(noise_privkey.0)).0)
-            .0
-            .to_hex()
+        "Started cosignerd daemon with Noise pubkey '{}' and Bitcoin pubkey '{}'",
+        noise_pubkey.0.to_hex(),
+        bit_pubkey
     );
 
     daemon_main(config, &noise_privkey, &bitcoin_privkey);

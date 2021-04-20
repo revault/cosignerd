@@ -3,7 +3,7 @@ use crate::{
     database::{db_insert_signed_outpoint, db_signed_outpoint, DatabaseError},
 };
 
-use revault_net::message::cosigner::{SignRequest, SignResponse};
+use revault_net::message::cosigner::{SignRequest, SignResult};
 use revault_tx::{
     bitcoin::{secp256k1, PublicKey as BitcoinPubkey, SigHashType},
     error::InputSatisfactionError,
@@ -28,8 +28,8 @@ impl std::fmt::Display for SignProcessingError {
 
 impl std::error::Error for SignProcessingError {}
 
-fn null_signature() -> SignResponse {
-    SignResponse { tx: None }
+fn null_signature() -> SignResult {
+    SignResult { tx: None }
 }
 
 /// This implements the main logic of the Cosigning Server. Acting as a dead-simple anti-replay
@@ -39,7 +39,7 @@ pub fn process_sign_message(
     config: &Config,
     sign_msg: SignRequest,
     bitcoin_privkey: &secp256k1::SecretKey,
-) -> Result<SignResponse, SignProcessingError> {
+) -> Result<SignResult, SignProcessingError> {
     let db_path = config.db_file();
     let mut spend_tx = sign_msg.tx;
 
@@ -92,7 +92,7 @@ pub fn process_sign_message(
     }
     spend_tx.inner_tx_mut().inputs = psbtins;
 
-    Ok(SignResponse { tx: Some(spend_tx) })
+    Ok(SignResult { tx: Some(spend_tx) })
 }
 
 #[cfg(test)]
@@ -131,7 +131,7 @@ mod test {
             0
         );
         let sign_a = SignRequest { tx };
-        let SignResponse { tx } = process_sign_message(
+        let SignResult { tx } = process_sign_message(
             &test_framework.config,
             sign_a,
             &test_framework.bitcoin_privkey,
@@ -159,7 +159,7 @@ mod test {
             .unwrap(),
         ]);
         let sign_a = SignRequest { tx };
-        let SignResponse { tx } = process_sign_message(
+        let SignResult { tx } = process_sign_message(
             &test_framework.config,
             sign_a,
             &test_framework.bitcoin_privkey,

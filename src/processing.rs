@@ -47,18 +47,25 @@ pub fn process_sign_message(
         return Ok(null_signature());
     }
 
+    eprintln!("After finalized check");
+
     // If any of the inputs was already signed, return null
     for txin in spend_tx.inner_tx().global.unsigned_tx.input.iter() {
+        eprintln!("A");
         if db_signed_outpoint(&db_path, &txin.previous_output)
             .map_err(SignProcessingError::Database)?
             .is_some()
         {
+            eprintln!("B");
             return Ok(null_signature());
         }
+        eprintln!("C");
 
         // NOTE: we initially decided to check each manager's signature here, and then we discarded
         // it. This is still being discussed whether it's fine to drop this check...
     }
+
+    eprintln!("D");
 
     // If we never signed it yet, append our signatures to the PSBT
     let secp = secp256k1::Secp256k1::signing_only();
@@ -67,6 +74,8 @@ pub fn process_sign_message(
         key: secp256k1::PublicKey::from_secret_key(&secp, bitcoin_privkey),
     };
     let mut psbtins = spend_tx.inner_tx_mut().inputs.clone(); // borrow checker forces a clone..
+    eprintln!("E");
+
     for (i, psbtin) in psbtins.iter_mut().enumerate() {
         // FIXME: sighash cache upstream...
         let sighash = spend_tx
@@ -83,6 +92,8 @@ pub fn process_sign_message(
             "If there was a signature for our pubkey already and we didn't return \
              above, we have big problems.."
         );
+
+        eprintln!("F");
 
         db_insert_signed_outpoint(
             &db_path,

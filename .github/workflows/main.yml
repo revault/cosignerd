@@ -29,7 +29,7 @@ jobs:
       - name: Test on Rust ${{ matrix.toolchain }}
         env:
           RUSTFLAGS: "-C link-dead-code"
-        run: cargo test --verbose --color always --all-features
+        run: cargo test --verbose --color always --all-features -- --nocapture
 
   fuzztesting:
     runs-on: ubuntu-latest

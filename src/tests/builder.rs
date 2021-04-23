@@ -59,17 +59,18 @@ impl CosignerTestBuilder {
 
         // Use a scratch directory in /tmp
         let data_dir_str = unsafe {
-            let template = String::from("/tmp/cosignerd-XXXXXX").into_bytes();
-            let mut template = std::mem::ManuallyDrop::new(template);
-            let template_ptr = template.as_mut_ptr() as *mut i8;
-            while libc::mkdtemp(template_ptr) == std::ptr::null_mut() {}
-            let datadir_str = String::from_raw_parts(
-                template_ptr as *mut u8,
-                template.len(),
-                template.capacity(),
-            );
-            assert!(!datadir_str.contains("XXXXXX"), "mkdtemp failed");
-            datadir_str
+            let template = std::ffi::CString::new("/tmp/cosignerd-XXXXXX").unwrap();
+            let template_ptr = template.into_raw();
+
+            if libc::mkdtemp(template_ptr) == std::ptr::null_mut() {
+                panic!(
+                    "Error creating temp dir: '{}'",
+                    std::io::Error::last_os_error(),
+                )
+            }
+            std::ffi::CString::from_raw(template_ptr)
+                .into_string()
+                .unwrap()
         };
         let data_dir = PathBuf::from_str(&data_dir_str).unwrap();
         let listen = SocketAddr::from_str("127.0.0.1:8383").unwrap();

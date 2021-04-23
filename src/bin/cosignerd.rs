@@ -7,7 +7,7 @@ use cosignerd::{
 };
 use revault_net::{
     bitcoin::PrivateKey,
-    message::cosigner::SignRequest,
+    message::{RequestParams, ResponseResult},
     noise::{PublicKey as NoisePubkey, SecretKey as NoisePrivkey},
     sodiumoxide::crypto::scalarmult::curve25519,
 };
@@ -75,47 +75,38 @@ fn daemon_main(
             }
         };
 
-        let buf = match kk_stream.read() {
+        match kk_stream.read_req(|req_params| {
+            match req_params {
+                RequestParams::Sign(sign_req) => {
+                    log::trace!("Decoded request: {:#?}", sign_req);
+
+                    let res = match process_sign_message(&config, sign_req, bitcoin_privkey) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            log::error!("Error when processing 'sign' message: '{}'", e);
+                            return None;
+                        }
+                    };
+                    log::trace!("Decoded response: {:#?}", res);
+
+                    Some(ResponseResult::SignResult(res))
+                }
+                _ => {
+                    // FIXME: This should probably be fatal, they are violating the protocol
+                    log::error!("Unexpected message: '{:?}'", req_params);
+                    None
+                }
+            }
+        }) {
             Ok(buf) => buf,
             Err(e) => {
-                log::error!("Error reading from stream '{:?}': '{}'", kk_stream, e);
+                log::error!(
+                    "Error handling request from stream '{:?}': '{}'",
+                    kk_stream,
+                    e
+                );
                 continue;
             }
-        };
-        log::debug!(
-            "Got '{}' from '{}'",
-            String::from_utf8_lossy(&buf),
-            revault_net::sodiumoxide::hex::encode(&kk_stream.remote_static().0)
-        );
-        let sign_msg: SignRequest = match serde_json::from_slice(&buf) {
-            Ok(msg) => msg,
-            // FIXME: This should probably be fatal, they are violating the protocol
-            Err(e) => {
-                log::error!("Decoding sign message: '{}'", e);
-                continue;
-            }
-        };
-        log::trace!("Decoded request: {:#?}", sign_msg);
-
-        let resp = match process_sign_message(&config, sign_msg, bitcoin_privkey) {
-            Ok(resp) => resp,
-            Err(e) => {
-                log::error!("Error when processing 'sign' message: '{}'", e);
-                continue;
-            }
-        };
-        log::trace!("Decoded response: {:#?}", resp);
-
-        let resp = match serde_json::to_vec(&resp) {
-            Ok(resp) => resp,
-            Err(e) => {
-                log::error!("Error serializing 'sign' response: '{}'", e);
-                continue;
-            }
-        };
-        log::debug!("Responding with '{}'", String::from_utf8_lossy(&resp));
-        if let Err(e) = kk_stream.write(&resp) {
-            log::error!("Error writing response: '{}'", e);
         }
     }
 }

@@ -64,7 +64,9 @@ impl CosignerTestBuilder {
             let template = String::from("/tmp/cosignerd-XXXXXX").into_bytes();
             let mut template = std::mem::ManuallyDrop::new(template);
             let template_ptr = template.as_mut_ptr() as *mut i8;
-            while libc::mkdtemp(template_ptr) == std::ptr::null_mut() {}
+            if libc::mkdtemp(template_ptr) == std::ptr::null_mut() {
+                panic!("Error creating temp dir: '{}'", libc::__errno_location().read())
+            }
             let datadir_str = String::from_raw_parts(
                 template_ptr as *mut u8,
                 template.len(),

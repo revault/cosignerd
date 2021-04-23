@@ -14,8 +14,7 @@ serde_json = "1"
 
 # Logging
 log = "0.4"
-fern = "0.5"
-chrono = "0.4"
+fern = "0.6"
 
 # Used for daemonization
 libc = "0.2"

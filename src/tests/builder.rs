@@ -5,14 +5,12 @@ use revault_tx::{
         bitcoin::{
             secp256k1,
             secp256k1::rand::{rngs::SmallRng, FromEntropy, RngCore},
-            util::bip32::{self, ChildNumber},
+            util::bip32,
             Network, OutPoint, TxOut,
         },
-        descriptor::{
-            DescriptorPublicKey, DescriptorPublicKeyCtx, DescriptorSinglePub, DescriptorXKey,
-        },
+        descriptor::{DescriptorPublicKey, DescriptorSinglePub, DescriptorXKey, Wildcard},
     },
-    scripts::{cpfp_descriptor, unvault_descriptor},
+    scripts::{CpfpDescriptor, UnvaultDescriptor},
     transactions::SpendTransaction,
     txins::UnvaultTxIn,
     txouts::{ExternalTxOut, SpendTxOut, UnvaultTxOut},
@@ -51,7 +49,7 @@ impl CosignerTestBuilder {
                 origin: None,
                 xkey: bip32::ExtendedPubKey::from_private(&secp, &random_privkey(&mut rng)),
                 derivation_path: bip32::DerivationPath::from(vec![]),
-                is_wildcard: true,
+                wildcard: Wildcard::Unhardened,
             });
             managers_keys.push(xpub);
 
@@ -61,17 +59,18 @@ impl CosignerTestBuilder {
 
         // Use a scratch directory in /tmp
         let data_dir_str = unsafe {
-            let template = String::from("/tmp/cosignerd-XXXXXX").into_bytes();
-            let mut template = std::mem::ManuallyDrop::new(template);
-            let template_ptr = template.as_mut_ptr() as *mut i8;
-            while libc::mkdtemp(template_ptr) == std::ptr::null_mut() {}
-            let datadir_str = String::from_raw_parts(
-                template_ptr as *mut u8,
-                template.len(),
-                template.capacity(),
-            );
-            assert!(!datadir_str.contains("XXXXXX"), "mkdtemp failed");
-            datadir_str
+            let template = std::ffi::CString::new("/tmp/cosignerd-XXXXXX").unwrap();
+            let template_ptr = template.into_raw();
+
+            if libc::mkdtemp(template_ptr) == std::ptr::null_mut() {
+                panic!(
+                    "Error creating temp dir: '{}'",
+                    std::io::Error::last_os_error(),
+                )
+            }
+            std::ffi::CString::from_raw(template_ptr)
+                .into_string()
+                .unwrap()
         };
         let data_dir = PathBuf::from_str(&data_dir_str).unwrap();
         let listen = SocketAddr::from_str("127.0.0.1:8383").unwrap();
@@ -102,7 +101,6 @@ impl CosignerTestBuilder {
     pub fn generate_spend_tx(&self, outpoints: &[OutPoint]) -> SpendTransaction {
         let mut rng = SmallRng::from_entropy();
         let secp = secp256k1::Secp256k1::new();
-        let xpub_ctx = DescriptorPublicKeyCtx::new(&secp, ChildNumber::from(0));
         let unvault_value: u64 = 100000000;
         let n_stk = 10;
         let csv = 12;
@@ -114,7 +112,7 @@ impl CosignerTestBuilder {
                 origin: None,
                 xkey: bip32::ExtendedPubKey::from_private(&secp, &random_privkey(&mut rng)),
                 derivation_path: bip32::DerivationPath::from(vec![]),
-                is_wildcard: true,
+                wildcard: Wildcard::Unhardened,
             }));
             cosigners_keys.push(DescriptorPublicKey::SinglePub(DescriptorSinglePub {
                 origin: None,
@@ -122,7 +120,7 @@ impl CosignerTestBuilder {
                     .public_key,
             }));
         }
-        let unvault_descriptor = unvault_descriptor(
+        let unvault_descriptor = UnvaultDescriptor::new(
             stakeholders_keys,
             self.managers_keys.clone(),
             1,
@@ -131,12 +129,13 @@ impl CosignerTestBuilder {
         )
         .expect("Unvault descriptor generation error");
         let cpfp_descriptor =
-            cpfp_descriptor(self.managers_keys.clone()).expect("CPFP desc generation error");
+            CpfpDescriptor::new(self.managers_keys.clone()).expect("CPFP desc generation error");
 
         let unvault_txins: Vec<UnvaultTxIn> = outpoints
             .iter()
             .map(|o| {
-                let unvault_txout = UnvaultTxOut::new(unvault_value, &unvault_descriptor, xpub_ctx);
+                let unvault_txout =
+                    UnvaultTxOut::new(unvault_value, &unvault_descriptor.derive(0.into(), &secp));
                 UnvaultTxIn::new(*o, unvault_txout, csv)
             })
             .collect();
@@ -148,8 +147,7 @@ impl CosignerTestBuilder {
         SpendTransaction::new(
             unvault_txins,
             vec![SpendTxOut::Destination(spend_txo.clone())],
-            &cpfp_descriptor,
-            xpub_ctx,
+            &cpfp_descriptor.derive(0.into(), &secp),
             0,
             true,
         )

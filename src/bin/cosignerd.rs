@@ -12,7 +12,7 @@ use revault_net::{
     sodiumoxide::crypto::scalarmult::curve25519,
 };
 use revault_tx::bitcoin::{hashes::hex::ToHex, secp256k1};
-use std::{env, fs, net::TcpListener, os::unix::fs::DirBuilderExt, path::PathBuf, process};
+use std::{env, fs, net::TcpListener, os::unix::fs::DirBuilderExt, path::PathBuf, process, time};
 
 fn parse_args(args: Vec<String>) -> Option<PathBuf> {
     if args.len() == 1 {
@@ -33,7 +33,13 @@ fn setup_logger(log_level: log::LevelFilter) -> Result<(), fern::InitError> {
         .format(|out, message, record| {
             out.finish(format_args!(
                 "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                time::SystemTime::now()
+                    .duration_since(time::UNIX_EPOCH)
+                    .unwrap_or_else(|e| {
+                        println!("Can't get time since epoch: '{}'. Using a dummy value.", e);
+                        time::Duration::from_secs(0)
+                    })
+                    .as_secs(),
                 record.target(),
                 record.level(),
                 message

@@ -13,12 +13,23 @@ fn main() {
     loop {
         fuzz!(|data: &[u8]| {
             if let Ok(tx) = SpendTransaction::from_psbt_serialized(data) {
+                let prevouts: Vec<_> = tx
+                    .inner_tx()
+                    .global
+                    .unsigned_tx
+                    .input
+                    .iter()
+                    .map(|txin| txin.previous_output)
+                    .collect();
+
                 let sigs_list: Vec<_> = tx
                     .inner_tx()
                     .inputs
                     .iter()
                     .map(|psbtin| psbtin.partial_sigs.clone())
                     .collect();
+
+                let is_finalized = tx.is_finalized();
 
                 let msg = SignRequest { tx };
                 let resp = cosignerd::processing::process_sign_message(
@@ -40,6 +51,12 @@ fn main() {
                             .unwrap()
                             .is_some());
                     }
+                } else if !is_finalized{
+                    let n_signed = prevouts
+                        .iter()
+                        .filter_map(|prevout| db_signed_outpoint(&db_path, &prevout).unwrap())
+                        .count();
+                    assert!(n_signed > 0 && n_signed < sigs_list.len());
                 }
             }
         });

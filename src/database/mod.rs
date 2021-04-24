@@ -1,6 +1,6 @@
 mod schema;
 
-use revault_tx::miniscript::bitcoin::{self, consensus::encode, OutPoint};
+use revault_tx::miniscript::bitcoin::{self, consensus::encode, secp256k1::Signature, OutPoint};
 use rusqlite::{params, types::FromSqlError, Row, ToSql};
 use schema::{DbSignedOutpoint, SCHEMA};
 use std::{
@@ -88,8 +88,12 @@ impl TryFrom<&Row<'_>> for DbSignedOutpoint {
             txid,
             vout: row.get(1)?,
         };
+        let signature = row.get::<_, Vec<u8>>(2)?;
 
-        Ok(DbSignedOutpoint { outpoint })
+        Ok(DbSignedOutpoint {
+            outpoint,
+            signature,
+        })
     }
 }
 
@@ -113,14 +117,25 @@ pub fn db_signed_outpoint(
 pub fn db_insert_signed_outpoint(
     db_path: &PathBuf,
     signed_outpoint: &OutPoint,
+    signature: &Signature,
 ) -> Result<(), DatabaseError> {
     db_exec(db_path, |tx| {
         tx.execute(
-            "INSERT INTO signed_outpoints (txid, vout) \
-             VALUES (?1, ?2)",
-            params![signed_outpoint.txid.to_vec(), signed_outpoint.vout],
+            "INSERT INTO signed_outpoints (txid, vout, signature) \
+             VALUES (?1, ?2, ?3)",
+            params![
+                signed_outpoint.txid.to_vec(),
+                signed_outpoint.vout,
+                signature.serialize_der().to_vec(),
+            ],
         )
-        .map_err(|e| DatabaseError(format!("Inserting signed outpoint: {}", e.to_string())))?;
+        .map_err(|e| {
+            DatabaseError(format!(
+                "Inserting signed outpoint '{}': {}",
+                signed_outpoint,
+                e.to_string()
+            ))
+        })?;
 
         Ok(())
     })
@@ -222,8 +237,21 @@ mod test {
             "e69a8de68c69b2f19249437004b65e82e2615c61c8d852fd36965c032a117d00:120",
         )
         .unwrap();
+        let sig = Signature::from_str(
+            "3045022100bd287d1cc62223e344a4eea99801e15dab6484365d2b4f981\
+                                      fa7febc0b29cea40220579ec2071c1e5e2dab8a468849214c6cfed2342bb\
+                                      ffa572327621bad2d894961",
+        )
+        .unwrap();
 
-        db_insert_signed_outpoint(&db_path, &outpoint).expect("Error inserting signed outpoint");
-        db_signed_outpoint(&db_path, &outpoint).expect("");
+        db_insert_signed_outpoint(&db_path, &outpoint, &sig)
+            .expect("Error inserting signed outpoint");
+        assert_eq!(
+            db_signed_outpoint(&db_path, &outpoint)
+                .unwrap()
+                .unwrap()
+                .signature,
+            sig.serialize_der().to_vec()
+        );
     }
 }

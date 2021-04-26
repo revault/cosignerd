@@ -32,12 +32,15 @@ fn main() {
                 let is_finalized = tx.is_finalized();
 
                 let msg = SignRequest { tx };
-                let resp = cosignerd::processing::process_sign_message(
+                let resp = match cosignerd::processing::process_sign_message(
                     &builder.config,
                     msg,
                     &builder.bitcoin_privkey,
-                )
-                .expect("We should never crash while processing a message");
+                ) {
+                    Ok(res) => res,
+                    Err(cosignerd::processing::SignProcessingError::Database(e)) => panic!("{}", e),
+                    Err(_) => return,
+                };
 
                 if let Some(resp_tx) = resp.tx {
                     let psbt = resp_tx.inner_tx();
@@ -51,7 +54,7 @@ fn main() {
                             .unwrap()
                             .is_some());
                     }
-                } else if !is_finalized{
+                } else if !is_finalized {
                     let n_signed = prevouts
                         .iter()
                         .filter_map(|prevout| db_signed_outpoint(&db_path, &prevout).unwrap())

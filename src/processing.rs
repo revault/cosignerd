@@ -13,6 +13,8 @@ use revault_tx::{
 #[derive(Debug)]
 pub enum SignProcessingError {
     Database(DatabaseError),
+    // They sent us an insane transaction. FIXME: these checks should be part of revault_tx!
+    Garbage,
     // FIXME: we should upstream the iteration over inputs as we can safely panic there.
     InsanePsbtMissingInput(InputSatisfactionError),
 }
@@ -21,6 +23,7 @@ impl std::fmt::Display for SignProcessingError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Database(e) => write!(f, "{}", e),
+            Self::Garbage => write!(f, "We were sent an insane Spend transaction"),
             Self::InsanePsbtMissingInput(e) => write!(f, "{}", e),
         }
     }
@@ -51,7 +54,7 @@ pub fn process_sign_message(
 
     // If it's finalized already, we won't be able to compute the sighash
     if spend_tx.is_finalized() {
-        return Ok(null_signature());
+        return Err(SignProcessingError::Garbage);
     }
 
     // Gather what signatures we have for these prevouts

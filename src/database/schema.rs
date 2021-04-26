@@ -16,6 +16,7 @@ CREATE TABLE signed_outpoints (
 ";
 
 /// A row in the "signed_outpoints" table
+#[derive(Debug)]
 pub struct DbSignedOutpoint {
     pub outpoint: OutPoint,
     // We don't even take care of parsing it as a Signature, as we only input it with

@@ -13,6 +13,15 @@ fn main() {
     loop {
         fuzz!(|data: &[u8]| {
             if let Ok(tx) = SpendTransaction::from_psbt_serialized(data) {
+                let prevouts: Vec<_> = tx
+                    .inner_tx()
+                    .global
+                    .unsigned_tx
+                    .input
+                    .iter()
+                    .map(|txin| txin.previous_output)
+                    .collect();
+
                 let sigs_list: Vec<_> = tx
                     .inner_tx()
                     .inputs
@@ -20,13 +29,18 @@ fn main() {
                     .map(|psbtin| psbtin.partial_sigs.clone())
                     .collect();
 
+                let is_finalized = tx.is_finalized();
+
                 let msg = SignRequest { tx };
-                let resp = cosignerd::processing::process_sign_message(
+                let resp = match cosignerd::processing::process_sign_message(
                     &builder.config,
                     msg,
                     &builder.bitcoin_privkey,
-                )
-                .expect("We should never crash while processing a message");
+                ) {
+                    Ok(res) => res,
+                    Err(cosignerd::processing::SignProcessingError::Database(e)) => panic!("{}", e),
+                    Err(_) => return,
+                };
 
                 if let Some(resp_tx) = resp.tx {
                     let psbt = resp_tx.inner_tx();
@@ -40,6 +54,12 @@ fn main() {
                             .unwrap()
                             .is_some());
                     }
+                } else if !is_finalized {
+                    let n_signed = prevouts
+                        .iter()
+                        .filter_map(|prevout| db_signed_outpoint(&db_path, &prevout).unwrap())
+                        .count();
+                    assert!(n_signed > 0 && n_signed < sigs_list.len());
                 }
             }
         });

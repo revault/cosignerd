@@ -22,14 +22,14 @@ libc = "0.2"
 rusqlite = { version = "0.24.2", features = ["bundled"] }
 
 # Revault-specific libraries
-revault_tx = { version = "0.2", features = ["use-serde"] }
-revault_net = { git = "https://github.com/revault/revault_net" }
+revault_tx = { version = "0.3", features = ["use-serde"] }
+revault_net = "0.1"
 
 # For fuzz testing
-bitcoin = {version = "0.26.0", features = ["rand"], optional = true}
+bitcoin = {version = "0.27", features = ["rand"], optional = true}
 
 [features]
 fuzztesting = ["bitcoin"]
 
 [dev-dependencies]
-bitcoin = {version = "0.26.0", features = ["rand"]}
+bitcoin = {version = "0.27", features = ["rand"]}

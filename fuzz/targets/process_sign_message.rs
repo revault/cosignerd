@@ -14,16 +14,14 @@ fn main() {
         fuzz!(|data: &[u8]| {
             if let Ok(tx) = SpendTransaction::from_psbt_serialized(data) {
                 let prevouts: Vec<_> = tx
-                    .inner_tx()
-                    .global
-                    .unsigned_tx
+                    .tx()
                     .input
                     .iter()
                     .map(|txin| txin.previous_output)
                     .collect();
 
                 let sigs_list: Vec<_> = tx
-                    .inner_tx()
+                    .psbt()
                     .inputs
                     .iter()
                     .map(|psbtin| psbtin.partial_sigs.clone())
@@ -43,7 +41,7 @@ fn main() {
                 };
 
                 if let Some(resp_tx) = resp.tx {
-                    let psbt = resp_tx.inner_tx();
+                    let psbt = resp_tx.psbt();
 
                     for (i, sigs) in sigs_list.into_iter().enumerate() {
                         assert!(psbt.inputs[i].partial_sigs.len() == sigs.len() + 1);

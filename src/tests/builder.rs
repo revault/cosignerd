@@ -6,14 +6,14 @@ use revault_tx::{
             secp256k1,
             secp256k1::rand::{rngs::SmallRng, FromEntropy, RngCore},
             util::bip32,
-            Network, OutPoint, TxOut,
+            Amount, Network, OutPoint, TxOut,
         },
         descriptor::{DescriptorPublicKey, DescriptorSinglePub, DescriptorXKey, Wildcard},
     },
     scripts::{CpfpDescriptor, UnvaultDescriptor},
     transactions::SpendTransaction,
     txins::UnvaultTxIn,
-    txouts::{ExternalTxOut, SpendTxOut, UnvaultTxOut},
+    txouts::{SpendTxOut, UnvaultTxOut},
 };
 
 use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr};
@@ -101,7 +101,7 @@ impl CosignerTestBuilder {
     pub fn generate_spend_tx(&self, outpoints: &[OutPoint]) -> SpendTransaction {
         let mut rng = SmallRng::from_entropy();
         let secp = secp256k1::Secp256k1::new();
-        let unvault_value: u64 = 100000000;
+        let unvault_value = Amount::from_sat(100000000);
         let n_stk = 10;
         let csv = 12;
 
@@ -139,10 +139,11 @@ impl CosignerTestBuilder {
                 UnvaultTxIn::new(*o, unvault_txout, csv)
             })
             .collect();
-        let spend_txo = ExternalTxOut::new(TxOut {
-            value: unvault_value * unvault_txins.len() as u64 - 50_000 * unvault_txins.len() as u64, // FIXME: we could compute the actual price
+        let spend_txo = TxOut {
+            value: unvault_value.as_sat() * unvault_txins.len() as u64
+                - 50_000 * unvault_txins.len() as u64, // FIXME: we could compute the actual price
             ..TxOut::default()
-        });
+        };
 
         SpendTransaction::new(
             unvault_txins,

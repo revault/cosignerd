@@ -4,7 +4,9 @@ The anti-replay oracle used under the [Revault architecture](https://github.com/
 
 ## Usage
 
-`cosignerd` must be used along with `revaultd`. Check `revaultd's` [tutorial](https://github.com/revault/revaultd/tree/master/doc/USAGE.md) to get started!
+`cosignerd` must be used along with `revaultd` as part of a Revault deployment.
+If you are looking for trying out Revault, check out the [`aquarium`](https://github.com/revault/aquarium)
+(a script putting all the Revault parts together on a regtest network).
 
 ## Testing
 

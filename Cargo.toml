@@ -1,6 +1,6 @@
 [package]
 name = "cosignerd"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["JSwambo <jake.t.swambo@hotmail.co.uk>", "Antoine Poinsot <darosior@protonmail.com>"]
 edition = "2018"
 

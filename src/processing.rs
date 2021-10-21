@@ -5,7 +5,7 @@ use crate::{
 
 use revault_net::message::cosigner::{SignRequest, SignResult};
 use revault_tx::{
-    bitcoin::{secp256k1, PublicKey as BitcoinPubkey, SigHashType},
+    bitcoin::{secp256k1, PublicKey as BitcoinPubkey, SigHashType, util::bip143::SigHashCache},
     error::InputSatisfactionError,
     transactions::RevaultTransaction,
 };
@@ -98,10 +98,11 @@ pub fn process_sign_message(
     }
 
     // If we signed none of the input, append fresh signatures for each of them to the PSBT.
+    let unsigned_tx = spend_tx.tx().clone();
+    let mut sighash_cache = SigHashCache::new(&unsigned_tx);
     for i in 0..spend_tx.psbt().inputs.len() {
-        // FIXME: sighash cache upstream...
         let sighash = spend_tx
-            .signature_hash(i, SigHashType::All)
+            .signature_hash_cached(i, SigHashType::All, &mut sighash_cache)
             .map_err(SignProcessingError::InsanePsbtMissingInput)?;
         let sighash = secp256k1::Message::from_slice(&sighash).expect("Sighash is 32 bytes");
 

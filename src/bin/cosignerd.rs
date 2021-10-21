@@ -52,6 +52,35 @@ fn setup_logger(log_level: log::LevelFilter) -> Result<(), fern::InitError> {
     Ok(())
 }
 
+fn process_message(
+    secp_ctx: &secp256k1::Secp256k1<secp256k1::All>,
+    config: &Config,
+    bitcoin_privkey: &secp256k1::SecretKey,
+    message: RequestParams,
+) -> Option<revault_net::message::ResponseResult> {
+    match message {
+        RequestParams::Sign(sign_req) => {
+            log::trace!("Decoded request: {:#?}", sign_req);
+
+            let res = match process_sign_message(&config, sign_req, bitcoin_privkey, &secp_ctx) {
+                Ok(res) => res,
+                Err(e) => {
+                    log::error!("Error when processing 'sign' message: '{}'", e);
+                    return None;
+                }
+            };
+            log::trace!("Decoded response: {:#?}", res);
+
+            Some(ResponseResult::SignResult(res))
+        }
+        _ => {
+            // FIXME: This should probably be fatal, they are violating the protocol
+            log::error!("Unexpected message: '{:?}'", message);
+            None
+        }
+    }
+}
+
 // Wait for connections from managers on the configured interface and process `sign` messages.
 fn daemon_main(
     config: Config,
@@ -82,37 +111,17 @@ fn daemon_main(
             }
         };
 
-        match kk_stream.read_req(|req_params| {
-            match req_params {
-                RequestParams::Sign(sign_req) => {
-                    log::trace!("Decoded request: {:#?}", sign_req);
-
-                    let res = match process_sign_message(&config, sign_req, bitcoin_privkey, &secp_ctx) {
-                        Ok(res) => res,
-                        Err(e) => {
-                            log::error!("Error when processing 'sign' message: '{}'", e);
-                            return None;
-                        }
-                    };
-                    log::trace!("Decoded response: {:#?}", res);
-
-                    Some(ResponseResult::SignResult(res))
-                }
-                _ => {
-                    // FIXME: This should probably be fatal, they are violating the protocol
-                    log::error!("Unexpected message: '{:?}'", req_params);
-                    None
-                }
-            }
-        }) {
-            Ok(buf) => buf,
-            Err(e) => {
+        // Process all messages from this connection.
+        loop {
+            if let Err(e) =
+                kk_stream.read_req(|msg| process_message(&secp_ctx, &config, &bitcoin_privkey, msg))
+            {
                 log::error!(
-                    "Error handling request from stream '{:?}': '{}'",
+                    "Error handling request from stream '{:?}': '{}'. Dropping connection.",
                     kk_stream,
                     e
                 );
-                continue;
+                break;
             }
         }
     }

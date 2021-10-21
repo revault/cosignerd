@@ -35,6 +35,7 @@ pub struct CosignerTestBuilder {
     pub noise_privkey: NoisePrivkey,
     pub bitcoin_privkey: secp256k1::SecretKey,
     pub managers_keys: Vec<DescriptorPublicKey>,
+    pub secp: secp256k1::Secp256k1<secp256k1::All>,
 }
 
 impl CosignerTestBuilder {
@@ -95,6 +96,7 @@ impl CosignerTestBuilder {
             noise_privkey,
             bitcoin_privkey,
             managers_keys,
+            secp,
         }
     }
 

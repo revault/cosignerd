@@ -34,6 +34,7 @@ fn main() {
                     &builder.config,
                     msg,
                     &builder.bitcoin_privkey,
+                    &builder.secp,
                 ) {
                     Ok(res) => res,
                     Err(cosignerd::processing::SignProcessingError::Database(e)) => panic!("{}", e),

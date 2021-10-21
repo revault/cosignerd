@@ -5,7 +5,7 @@ use crate::{
 
 use revault_net::message::cosigner::{SignRequest, SignResult};
 use revault_tx::{
-    bitcoin::{secp256k1, PublicKey as BitcoinPubkey, SigHashType, util::bip143::SigHashCache},
+    bitcoin::{secp256k1, util::bip143::SigHashCache, PublicKey as BitcoinPubkey, SigHashType},
     error::InputSatisfactionError,
     transactions::RevaultTransaction,
 };
@@ -42,10 +42,9 @@ pub fn process_sign_message(
     config: &Config,
     sign_msg: SignRequest,
     bitcoin_privkey: &secp256k1::SecretKey,
+    secp: &secp256k1::Secp256k1<secp256k1::All>,
 ) -> Result<SignResult, SignProcessingError> {
     let db_path = config.db_file();
-    // TODO: Cache it in the caller
-    let secp = secp256k1::Secp256k1::new();
     let our_pubkey = BitcoinPubkey {
         compressed: true,
         key: secp256k1::PublicKey::from_secret_key(&secp, bitcoin_privkey),
@@ -173,6 +172,7 @@ mod test {
             &test_framework.config,
             sign_a.clone(),
             &test_framework.bitcoin_privkey,
+            &test_framework.secp,
         )
         .unwrap();
         let tx = tx.unwrap();
@@ -190,6 +190,7 @@ mod test {
             &test_framework.config,
             sign_a,
             &test_framework.bitcoin_privkey,
+            &test_framework.secp,
         )
         .unwrap();
         assert_eq!(tx, second_psbt.unwrap());
@@ -211,6 +212,7 @@ mod test {
             &test_framework.config,
             sign_a,
             &test_framework.bitcoin_privkey,
+            &test_framework.secp,
         )
         .unwrap();
         assert!(tx.is_none(), "It contains a duplicated outpoint");
@@ -226,6 +228,7 @@ mod test {
             &test_framework.config,
             sign_msg,
             &test_framework.bitcoin_privkey,
+            &test_framework.secp,
         )
         .unwrap_err();
     }

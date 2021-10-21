@@ -65,6 +65,7 @@ fn daemon_main(
     });
     let managers_noise_pubkeys: Vec<NoisePubkey> =
         config.managers.iter().map(|m| m.noise_key).collect();
+    let secp_ctx = secp256k1::Secp256k1::new();
 
     // We expect a single connection once in a while, there is *no need* for complexity here so
     // just treat incoming connections sequentially.
@@ -86,7 +87,7 @@ fn daemon_main(
                 RequestParams::Sign(sign_req) => {
                     log::trace!("Decoded request: {:#?}", sign_req);
 
-                    let res = match process_sign_message(&config, sign_req, bitcoin_privkey) {
+                    let res = match process_sign_message(&config, sign_req, bitcoin_privkey, &secp_ctx) {
                         Ok(res) => res,
                         Err(e) => {
                             log::error!("Error when processing 'sign' message: '{}'", e);

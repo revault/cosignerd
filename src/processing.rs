@@ -61,23 +61,6 @@ pub fn process_sign_message(
     // Gather what signatures we have for these prevouts
     let mut signatures = Vec::with_capacity(n_inputs);
     for txin in spend_tx.tx().input.iter() {
-        if spend_tx
-            .tx()
-            .input
-            .iter()
-            .filter_map(|curr| {
-                if curr.previous_output == txin.previous_output {
-                    Some(curr)
-                } else {
-                    None
-                }
-            })
-            .count()
-            > 1
-        {
-            return Err(SignProcessingError::Garbage);
-        }
-
         if let Some(signed_op) = db_signed_outpoint(&db_path, &txin.previous_output)
             .map_err(SignProcessingError::Database)?
         {

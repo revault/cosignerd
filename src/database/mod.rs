@@ -89,6 +89,8 @@ impl TryFrom<&Row<'_>> for DbSignedOutpoint {
             vout: row.get(1)?,
         };
         let signature = row.get::<_, Vec<u8>>(2)?;
+        let signature = Signature::from_der(&signature)
+            .expect("We only ever store valid DER-encoded signatures");
 
         Ok(DbSignedOutpoint {
             outpoint,
@@ -251,7 +253,7 @@ mod test {
                 .unwrap()
                 .unwrap()
                 .signature,
-            sig.serialize_der().to_vec()
+            sig
         );
     }
 }

@@ -44,7 +44,8 @@ pub fn process_sign_message(
     bitcoin_privkey: &secp256k1::SecretKey,
 ) -> Result<SignResult, SignProcessingError> {
     let db_path = config.db_file();
-    let secp = secp256k1::Secp256k1::signing_only();
+    // TODO: Cache it in the caller
+    let secp = secp256k1::Secp256k1::new();
     let our_pubkey = BitcoinPubkey {
         compressed: true,
         key: secp256k1::PublicKey::from_secret_key(&secp, bitcoin_privkey),
@@ -90,14 +91,20 @@ pub fn process_sign_message(
         // soon..
     }
 
-    // If we had all the signatures for all these outpoints, send them. They'll figure out whether
-    // they are valid or not.
+    // If we had all the signatures for all these outpoints, send them if they are valid.
     if signatures.len() == n_inputs {
-        for (i, mut sig) in signatures.into_iter().enumerate() {
-            sig.push(SigHashType::All as u8);
-            spend_tx.psbt_mut().inputs[i]
-                .partial_sigs
-                .insert(our_pubkey, sig);
+        for (i, sig) in signatures.into_iter().enumerate() {
+            // Don't let them fool you!
+            if spend_tx
+                .add_signature(i, our_pubkey.key, sig, &secp)
+                .is_err()
+            {
+                log::error!(
+                    "Invalid signature. Got a request for a modified Spend: '{}'",
+                    spend_tx
+                );
+                return Ok(null_signature());
+            }
         }
         return Ok(SignResult { tx: Some(spend_tx) });
     }
@@ -108,8 +115,7 @@ pub fn process_sign_message(
     }
 
     // If we signed none of the input, append fresh signatures for each of them to the PSBT.
-    let mut psbtins = spend_tx.psbt().inputs.clone();
-    for (i, psbtin) in psbtins.iter_mut().enumerate() {
+    for i in 0..spend_tx.psbt().inputs.len() {
         // FIXME: sighash cache upstream...
         let sighash = spend_tx
             .signature_hash(i, SigHashType::All)
@@ -117,10 +123,11 @@ pub fn process_sign_message(
         let sighash = secp256k1::Message::from_slice(&sighash).expect("Sighash is 32 bytes");
 
         let signature = secp.sign(&sighash, bitcoin_privkey);
-        let mut raw_sig = signature.serialize_der().to_vec();
-        raw_sig.push(SigHashType::All as u8);
+        let res = spend_tx
+            .add_signature(i, our_pubkey.key, signature, &secp)
+            .expect("We must provide valid signatures");
         assert!(
-            psbtin.partial_sigs.insert(our_pubkey, raw_sig).is_none(),
+            res.is_none(),
             "If there was a signature for our pubkey already and we didn't return \
              above, we have big problems.."
         );
@@ -132,7 +139,6 @@ pub fn process_sign_message(
         )
         .map_err(SignProcessingError::Database)?;
     }
-    spend_tx.psbt_mut().inputs = psbtins;
 
     // Belt-and-suspender: if it was not empty, we would have signed a prevout twice.
     assert!(signatures.is_empty());

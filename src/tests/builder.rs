@@ -147,7 +147,8 @@ impl CosignerTestBuilder {
 
         SpendTransaction::new(
             unvault_txins,
-            vec![SpendTxOut::Destination(spend_txo.clone())],
+            vec![SpendTxOut::new(spend_txo.clone())],
+            None,
             &cpfp_descriptor.derive(0.into(), &secp),
             0,
             true,

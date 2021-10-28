@@ -35,6 +35,7 @@ pub struct CosignerTestBuilder {
     pub noise_privkey: NoisePrivkey,
     pub bitcoin_privkey: secp256k1::SecretKey,
     pub managers_keys: Vec<DescriptorPublicKey>,
+    pub secp: secp256k1::Secp256k1<secp256k1::All>,
 }
 
 impl CosignerTestBuilder {
@@ -95,6 +96,7 @@ impl CosignerTestBuilder {
             noise_privkey,
             bitcoin_privkey,
             managers_keys,
+            secp,
         }
     }
 
@@ -147,7 +149,8 @@ impl CosignerTestBuilder {
 
         SpendTransaction::new(
             unvault_txins,
-            vec![SpendTxOut::Destination(spend_txo.clone())],
+            vec![SpendTxOut::new(spend_txo.clone())],
+            None,
             &cpfp_descriptor.derive(0.into(), &secp),
             0,
             true,

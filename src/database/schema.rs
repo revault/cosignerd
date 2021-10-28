@@ -1,4 +1,4 @@
-use revault_tx::miniscript::bitcoin::OutPoint;
+use revault_tx::miniscript::bitcoin::{secp256k1::Signature, OutPoint};
 
 pub const SCHEMA: &str = "\
 
@@ -21,5 +21,5 @@ pub struct DbSignedOutpoint {
     pub outpoint: OutPoint,
     // We don't even take care of parsing it as a Signature, as we only input it with
     // to_der() and use it to insert in partial_sigs (which takes raw bytes)
-    pub signature: Vec<u8>,
+    pub signature: Signature,
 }

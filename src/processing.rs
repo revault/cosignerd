@@ -5,7 +5,7 @@ use crate::{
 
 use revault_net::message::cosigner::{SignRequest, SignResult};
 use revault_tx::{
-    bitcoin::{secp256k1, PublicKey as BitcoinPubkey, SigHashType},
+    bitcoin::{secp256k1, util::bip143::SigHashCache, PublicKey as BitcoinPubkey, SigHashType},
     error::InputSatisfactionError,
     transactions::RevaultTransaction,
 };
@@ -42,9 +42,9 @@ pub fn process_sign_message(
     config: &Config,
     sign_msg: SignRequest,
     bitcoin_privkey: &secp256k1::SecretKey,
+    secp: &secp256k1::Secp256k1<secp256k1::All>,
 ) -> Result<SignResult, SignProcessingError> {
     let db_path = config.db_file();
-    let secp = secp256k1::Secp256k1::signing_only();
     let our_pubkey = BitcoinPubkey {
         compressed: true,
         key: secp256k1::PublicKey::from_secret_key(&secp, bitcoin_privkey),
@@ -60,23 +60,6 @@ pub fn process_sign_message(
     // Gather what signatures we have for these prevouts
     let mut signatures = Vec::with_capacity(n_inputs);
     for txin in spend_tx.tx().input.iter() {
-        if spend_tx
-            .tx()
-            .input
-            .iter()
-            .filter_map(|curr| {
-                if curr.previous_output == txin.previous_output {
-                    Some(curr)
-                } else {
-                    None
-                }
-            })
-            .count()
-            > 1
-        {
-            return Err(SignProcessingError::Garbage);
-        }
-
         if let Some(signed_op) = db_signed_outpoint(&db_path, &txin.previous_output)
             .map_err(SignProcessingError::Database)?
         {
@@ -90,14 +73,20 @@ pub fn process_sign_message(
         // soon..
     }
 
-    // If we had all the signatures for all these outpoints, send them. They'll figure out whether
-    // they are valid or not.
+    // If we had all the signatures for all these outpoints, send them if they are valid.
     if signatures.len() == n_inputs {
-        for (i, mut sig) in signatures.into_iter().enumerate() {
-            sig.push(SigHashType::All as u8);
-            spend_tx.psbt_mut().inputs[i]
-                .partial_sigs
-                .insert(our_pubkey, sig);
+        for (i, sig) in signatures.into_iter().enumerate() {
+            // Don't let them fool you!
+            if spend_tx
+                .add_signature(i, our_pubkey.key, sig, &secp)
+                .is_err()
+            {
+                log::error!(
+                    "Invalid signature. Got a request for a modified Spend: '{}'",
+                    spend_tx
+                );
+                return Ok(null_signature());
+            }
         }
         return Ok(SignResult { tx: Some(spend_tx) });
     }
@@ -108,19 +97,20 @@ pub fn process_sign_message(
     }
 
     // If we signed none of the input, append fresh signatures for each of them to the PSBT.
-    let mut psbtins = spend_tx.psbt().inputs.clone();
-    for (i, psbtin) in psbtins.iter_mut().enumerate() {
-        // FIXME: sighash cache upstream...
+    let unsigned_tx = spend_tx.tx().clone();
+    let mut sighash_cache = SigHashCache::new(&unsigned_tx);
+    for i in 0..spend_tx.psbt().inputs.len() {
         let sighash = spend_tx
-            .signature_hash(i, SigHashType::All)
+            .signature_hash_cached(i, SigHashType::All, &mut sighash_cache)
             .map_err(SignProcessingError::InsanePsbtMissingInput)?;
         let sighash = secp256k1::Message::from_slice(&sighash).expect("Sighash is 32 bytes");
 
         let signature = secp.sign(&sighash, bitcoin_privkey);
-        let mut raw_sig = signature.serialize_der().to_vec();
-        raw_sig.push(SigHashType::All as u8);
+        let res = spend_tx
+            .add_signature(i, our_pubkey.key, signature, &secp)
+            .expect("We must provide valid signatures");
         assert!(
-            psbtin.partial_sigs.insert(our_pubkey, raw_sig).is_none(),
+            res.is_none(),
             "If there was a signature for our pubkey already and we didn't return \
              above, we have big problems.."
         );
@@ -132,7 +122,6 @@ pub fn process_sign_message(
         )
         .map_err(SignProcessingError::Database)?;
     }
-    spend_tx.psbt_mut().inputs = psbtins;
 
     // Belt-and-suspender: if it was not empty, we would have signed a prevout twice.
     assert!(signatures.is_empty());
@@ -183,6 +172,7 @@ mod test {
             &test_framework.config,
             sign_a.clone(),
             &test_framework.bitcoin_privkey,
+            &test_framework.secp,
         )
         .unwrap();
         let tx = tx.unwrap();
@@ -200,6 +190,7 @@ mod test {
             &test_framework.config,
             sign_a,
             &test_framework.bitcoin_privkey,
+            &test_framework.secp,
         )
         .unwrap();
         assert_eq!(tx, second_psbt.unwrap());
@@ -221,6 +212,7 @@ mod test {
             &test_framework.config,
             sign_a,
             &test_framework.bitcoin_privkey,
+            &test_framework.secp,
         )
         .unwrap();
         assert!(tx.is_none(), "It contains a duplicated outpoint");
@@ -236,6 +228,7 @@ mod test {
             &test_framework.config,
             sign_msg,
             &test_framework.bitcoin_privkey,
+            &test_framework.secp,
         )
         .unwrap_err();
     }

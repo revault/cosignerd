@@ -1,7 +1,6 @@
 use revault_tx::miniscript::bitcoin::{secp256k1::Signature, OutPoint};
 
 pub const SCHEMA: &str = "\
-
 CREATE TABLE db_params (
     version INTEGER NOT NULL
 );

@@ -1,6 +1,6 @@
 [package]
 name = "cosignerd"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["JSwambo <jake.t.swambo@hotmail.co.uk>", "Antoine Poinsot <darosior@protonmail.com>"]
 edition = "2018"
 repository = "https://github.com/revault/revaultd"
@@ -28,8 +28,8 @@ libc = "0.2"
 rusqlite = { version = "0.24.2", features = ["bundled"] }
 
 # Revault-specific libraries
-revault_tx = { version = "0.4", features = ["use-serde"] }
-revault_net = "0.2"
+revault_tx = { version = "0.4.1", features = ["use-serde"] }
+revault_net = "0.2.1"
 
 # For fuzz testing
 bitcoin = {version = "0.27", features = ["rand"], optional = true}

@@ -99,8 +99,15 @@ fn daemon_main(
     // We expect a single connection once in a while, there is *no need* for complexity here so
     // just treat incoming connections sequentially.
     loop {
+        let (connection, _) = match listener.accept() {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Accepting new connection: '{}'", e);
+                continue;
+            }
+        };
         let mut kk_stream = match revault_net::transport::KKTransport::accept(
-            &listener,
+            connection,
             noise_privkey,
             &managers_noise_pubkeys,
         ) {

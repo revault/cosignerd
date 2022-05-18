@@ -1,13 +1,13 @@
 [package]
 name = "cosignerd"
-version = "0.0.3"
+version = "0.1.0"
 authors = ["Antoine Poinsot <darosior@protonmail.com>"]
 edition = "2018"
 repository = "https://github.com/revault/revaultd"
 license-file = "LICENCE"
 keywords = ["revault", "bitcoin", "vault"]
 description = "Revault cosigning server"
-exclude = [".github/"]
+exclude = [".github/", "fuzz"]
 
 
 [dependencies]
@@ -28,8 +28,8 @@ libc = "0.2"
 rusqlite = { version = "0.24.2", features = ["bundled"] }
 
 # Revault-specific libraries
-revault_tx = { git = "https://github.com/revault/revault_tx", features = ["use-serde"] }
-revault_net = { git = "https://github.com/revault/revault_net" }
+revault_tx = { version = "0.5", features = ["use-serde"] }
+revault_net = "0.3"
 
 
 # For fuzz testing
